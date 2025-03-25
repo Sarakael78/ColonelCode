@@ -1,0 +1,3937 @@
+
+
+
+Okay, let's architect this modular Python application. Given the complexity and requirements, this will be a substantial undertaking. This response will outline the structure, key components, best practices employed, and provide illustrative code snippets. Implementing the full application requires significant development effort.
+
+
+
+Chain-of-Thought:
+
+
+
+Deconstruct Requirements: Break down the request into functional blocks (GitHub interaction, GUI, LLM prompting, response parsing, file writing, GitHub updating). Identify non-functional requirements (modularity, modern GUI, documentation, error handling, user feedback, best practices, specific output format).
+
+Technology Selection: Choose appropriate libraries for each block:
+
+GUI: PyQt6 or PySide6 for a modern look and feel (using PySide6 for LGPL license flexibility).
+
+GitHub Interaction: gitpython library for programmatic Git operations. requests might be needed for direct API calls if gitpython isn't sufficient for certain tasks (like checking repo existence without cloning).
+
+LLM Interaction: google-generativeai for Gemini.
+
+Structured Data: json (built-in), PyYAML, xml.etree.ElementTree. JSON is often the simplest for API <-> LLM interaction.
+
+Configuration: python-dotenv or configparser.
+
+Logging: logging (built-in).
+
+Architectural Design: Plan a modular structure separating concerns: GUI, core logic (GitHub, LLM, file processing), utilities (logging, configuration), and potentially tests.
+
+Core Logic Implementation Strategy:
+
+GitHub: Clone, list files, read selected files, stage/commit/push. Handle authentication (token).
+
+LLM Prompting: Combine user instructions and selected file contents into a structured prompt, explicitly requesting JSON/YAML/XML output in a single code block.
+
+LLM Interaction: Send prompt via API, handle responses and API errors. Allow manual paste input.
+
+Response Parsing: Extract the code block, parse the structured data (JSON chosen as primary example), validate structure.
+
+File Writing: Recreate the file structure locally based on parsed data.
+
+GUI Design Strategy:
+
+User-friendly layout for input (Repo URL, prompt, API keys).
+
+Mechanism for file selection within the cloned repo (e.g., QListWidget with checkboxes or QTreeView).
+
+Display area for logs/status updates (QTextEdit).
+
+Area for LLM response input/display (QTextEdit).
+
+Buttons for actions (Clone, Select Files, Generate Prompt, Send to LLM, Parse Response, Save Files, Push to GitHub).
+
+Use threading (QThread) for long-running tasks (network, file I/O) to keep the GUI responsive.
+
+Provide clear feedback via status bar, log area, and message boxes.
+
+Error Handling Strategy: Implement granular try...except blocks, define custom exceptions for different error types (GitHub, LLM, Parsing, Configuration), log errors thoroughly, and present user-friendly error messages via the GUI.
+
+Documentation & Best Practices: Adhere to PEP 8 (with noted user preference overrides), use type hinting, write comprehensive docstrings (Google style), include inline comments, use a virtual environment, manage dependencies (requirements.txt), implement logging, handle secrets securely (config/env files, .gitignore). Address user's specific Python style preferences (camelCase, tabs, [] init).
+
+Output Generation: Structure the explanation, provide code structure, detail each module, include example snippets, and list requirements.
+
+Proposed Application Structure
+
+This structure promotes modularity and separation of concerns.
+
+
+
+llm_code_updater/
+
+├── main.py # Application entry point
+
+├── gui/ # PyQt6/PySide6 GUI components
+
+│ ├── __init__.py
+
+│ ├── main_window.py # Main application window class
+
+│ ├── widgets/ # Custom reusable GUI widgets (e.g., file selector)
+
+│ │ └── __init__.py
+
+│ │ └── file_selector.py
+
+│ └── threads.py # QThread workers for background tasks
+
+│ └── gui_utils.py # GUI-specific helper functions/signals
+
+├── core/ # Core application logic (backend)
+
+│ ├── __init__.py
+
+│ ├── github_handler.py # Handles cloning, file access, pushing
+
+│ ├── llm_interface.py # Handles prompt creation and LLM interaction
+
+│ ├── file_processor.py # Handles parsing LLM output and writing files
+
+│ ├── config_manager.py # Manages configuration and API keys
+
+│ └── exceptions.py # Custom exception classes
+
+├── utils/ # Shared utility functions
+
+│ ├── __init__.py
+
+│ └── logger_setup.py # Centralised logging configuration
+
+├── tests/ # Unit and integration tests (Essential Best Practice)
+
+│ ├── __init__.py
+
+│ ├── test_github_handler.py
+
+│ └── ... # Tests for other core modules
+
+├── resources/ # Static resources like icons (optional)
+
+│ └── app_icon.png
+
+├── docs/ # Extensive documentation (e.g., Sphinx generated)
+
+│ └── ...
+
+├── .env.example # Example environment file for secrets
+
+├── .gitignore # To exclude venv, __pycache__, .env, etc.
+
+├── config.ini # Optional configuration file
+
+├── requirements.txt # Project dependencies
+
+└── README.md # Project overview, setup, usage instructions
+
+Key Components and Functionality
+
+1. main.py (Entry Point)
+
+
+
+Initialises the logging system.
+
+Loads configuration.
+
+Creates the Qt Application instance.
+
+Instantiates and shows the MainWindow.
+
+Starts the Qt event loop.
+
+Python
+
+
+
+# main.py
+
+import sys
+
+import logging
+
+from PySide6.QtWidgets import QApplication
+
+from core.config_manager import ConfigManager
+
+from core.exceptions import ConfigurationError
+
+from gui.main_window import MainWindow
+
+from utils.logger_setup import setupLogging
+
+
+
+# --- Configuration ---
+
+# Adhering to user preference for explicit initialisation
+
+configFilePath: str = 'config.ini'
+
+envFilePath: str = '.env'
+
+
+
+def main() -> None:
+
+"""Main application entry point."""
+
+# Setup logging first
+
+# Log to console initially, GUI handler will be added later
+
+logger: logging.Logger = setupLogging(logToConsole=True)
+
+logger.info("Application starting...")
+
+
+
+configManager: ConfigManager = ConfigManager(configFilePath, envFilePath)
+
+try:
+
+# Load sensitive data (API keys) from .env first for security
+
+configManager.loadEnv()
+
+# Load other non-sensitive settings from config.ini
+
+configManager.loadConfig()
+
+logger.info("Configuration loaded successfully.")
+
+except ConfigurationError as e:
+
+logger.error(f"Failed to load configuration: {e}", exc_info=True)
+
+# Optionally show a critical error dialog before exiting if GUI were available
+
+sys.exit(f"Configuration Error: {e}")
+
+except Exception as e: # Catch unexpected errors during config loading
+
+logger.critical(f"An unexpected error occurred during configuration loading: {e}", exc_info=True)
+
+sys.exit("Fatal Error: Could not load configuration.")
+
+
+
+app: QApplication = QApplication(sys.argv)
+
+
+
+# Pass the config manager to the main window
+
+mainWindow: MainWindow = MainWindow(configManager)
+
+mainWindow.show()
+
+
+
+logger.info("Main window displayed. Starting event loop.")
+
+try:
+
+sys.exit(app.exec())
+
+except Exception as e:
+
+logger.critical(f"An unhandled exception occurred in the event loop: {e}", exc_info=True)
+
+# Attempt graceful shutdown if possible
+
+sys.exit("Fatal Error: Application crashed.")
+
+
+
+if __name__ == "__main__":
+
+main()
+
+
+
+2. gui/ (Graphical User Interface)
+
+
+
+main_window.py: Defines the main application window layout, widgets (input fields, buttons, lists, text areas), connects signals (button clicks) to slots (methods that trigger actions). It orchestrates the user interaction flow. It will instantiate worker threads from threads.py for background tasks.
+
+widgets/: Contains custom, reusable widgets. For example, file_selector.py could implement a QTreeView or QListWidget tailored for displaying and selecting files from the cloned repository.
+
+threads.py: Defines QThread subclasses for long-running operations (Git clone, push, LLM API call, file processing) to prevent the GUI from freezing. These threads emit signals to update the GUI with progress, results, or errors.
+
+gui_utils.py: May contain utility functions specific to the GUI, like custom signal definitions or helper functions for updating GUI elements safely from threads. It could also contain a custom logging handler that emits signals to update a QTextEdit log widget.
+
+3. core/ (Core Logic)
+
+
+
+github_handler.py:
+
+Uses gitpython.
+
+cloneRepository(repoUrl: str, localPath: str, authToken: str | None = None) -> git.Repo: Clones the repository. Handles authentication (HTTPS token or SSH key). Raises GitHubError for issues (invalid URL, auth failure, network error, Git command failure). Provides granular output via logging.
+
+listFiles(repoPath: str) -> list[str]: Returns a list of relative file paths within the repository, potentially filtering out .git directory, binary files, etc.
+
+readFileContent(repoPath: str, filePath: str) -> str: Reads the content of a specific file. Handles FileNotFoundError, UnicodeDecodeError, raising GitHubError.
+
+updateRepo(repoPath: str, commitMessage: str, push: bool = True, remoteName: str = 'origin', branchName: str = 'main', authToken: str | None = None): Stages all changes, commits them with the provided message, and optionally pushes to the remote. Handles Git command errors, push conflicts, and authentication, raising GitHubError. Logs steps taken.
+
+llm_interface.py:
+
+buildPrompt(instruction: str, fileContents: dict[str, str]) -> str: Constructs the prompt. Includes the user's instruction and the content of selected files. Critically, it must instruct the LLM on the desired output format.
+
+Example Prompt Snippet:
+
+Plaintext
+
+
+
+User Instruction: {instruction}
+
+
+
+Context from codebase:
+
+--- FILE: path/to/file1.py ---
+
+{content of file1.py}
+
+--- END FILE: path/to/file1.py ---
+
+--- FILE: path/to/another/file2.js ---
+
+{content of file2.js}
+
+--- END FILE: path/to/another/file2.js ---
+
+
+
+Based on the user instruction and the provided file contexts, update the code.
+
+Provide the *complete, updated content* for *all modified files* as a single JSON object within a single markdown code block.
+
+The JSON object should map the relative file path (as a string key) to the full updated file content (as a string value).
+
+Example JSON structure:
+
+{{
+
+"path/to/updated_file1.py": "...",
+
+"path/to/new_file.txt": "...",
+
+"path/to/another/file2.js": "..."
+
+}}
+
+Ensure the JSON is valid and contains the full file contents. Only include files that were modified or newly created in the response JSON. If no files need modification based on the instruction, return an empty JSON object: {{}}.
+
+queryLlmApi(apiKey: str, prompt: str, modelName: str = "gemini-pro") -> str: Sends the prompt to the specified LLM API (e.g., Gemini). Uses the google-generativeai library. Handles API key errors, network errors, rate limits, content safety blocks, raising LLMError. Logs interaction steps.
+
+file_processor.py:
+
+extractCodeBlock(llmResponse: str, language: str = 'json') -> str | None: Uses regex or string manipulation to find and extract the content within the first code block (e.g., json ...). Raises ParsingError if no block is found.
+
+parseStructuredOutput(structuredDataString: str, format: str = 'json') -> dict[str, str]: Parses the extracted string using the appropriate library (json.loads, yaml.safe_load). Validates that the result is a dictionary with string keys (filenames) and string values (content). Raises ParsingError for invalid format or structure. Logs parsing steps.
+
+saveFilesToDisk(outputDir: str, fileData: dict[str, str]) -> list[str]: Iterates through the parsed dictionary. Creates necessary subdirectories within outputDir. Writes the content to each file, overwriting existing ones. Handles file system errors (permissions, disk space), raising FileProcessingError. Returns a list of saved file paths. Logs files being written.
+
+config_manager.py:
+
+Uses configparser for config.ini and dotenv for .env.
+
+Loads API keys (Gemini, potentially GitHub token) securely from environment variables or a .env file (which must be in .gitignore).
+
+Loads non-sensitive settings (default paths, model preferences) from config.ini.
+
+Provides methods to get configuration values, raising ConfigurationError if a required value is missing.
+
+exceptions.py: Defines custom exception classes for granular error handling.
+
+Python
+
+
+
+# core/exceptions.py
+
+"""Custom exception classes for the application."""
+
+
+
+class BaseApplicationError(Exception):
+
+"""Base class for application-specific errors."""
+
+pass
+
+
+
+class ConfigurationError(BaseApplicationError):
+
+"""Errors related to loading or accessing configuration."""
+
+pass
+
+
+
+class GitHubError(BaseApplicationError):
+
+"""Errors related to interacting with Git or GitHub."""
+
+pass
+
+
+
+class LLMError(BaseApplicationError):
+
+"""Errors related to interacting with the LLM API."""
+
+pass
+
+
+
+class ParsingError(BaseApplicationError):
+
+"""Errors related to parsing LLM responses or other structured data."""
+
+pass
+
+
+
+class FileProcessingError(BaseApplicationError):
+
+"""Errors related to reading or writing files."""
+
+pass
+
+4. utils/ (Utilities)
+
+
+
+logger_setup.py: Configures the root logger. Sets formatters, handlers (console, file, custom GUI handler). Allows adjusting log levels.
+
+5. tests/ (Testing)
+
+
+
+Crucial for reliability and maintainability (Best Practice).
+
+Uses unittest or pytest.
+
+Mocks external dependencies (Git commands, API calls) during unit testing.
+
+Includes integration tests where feasible.
+
+6. requirements.txt
+
+
+
+# requirements.txt
+
+PySide6>=6.6.0,<7.0.0 # Or PyQt6
+
+GitPython>=3.1.30,<4.0.0
+
+google-generativeai>=0.4.0,<1.0.0
+
+python-dotenv>=1.0.0,<2.0.0
+
+PyYAML>=6.0,<7.0.0 # If YAML support is desired
+
+# Add other dependencies like 'requests' if needed
+
+7. .env.example & .gitignore
+
+
+
+.env.example:
+
+# DO NOT COMMIT ACTUAL KEYS TO GIT. COPY THIS TO .env AND FILL IN YOUR KEYS.
+
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+
+GITHUB_TOKEN="YOUR_GITHUB_PERSONAL_ACCESS_TOKEN" # Optional, for private repos/pushing
+
+.gitignore: Crucially includes .env, __pycache__/, *.pyc, virtual environment directories (venv/, .venv/), configuration files potentially containing secrets if not using .env, build artifacts, test reports, log files.
+
+Error Handling and User Feedback
+
+Granular Exceptions: Use the custom exceptions (GitHubError, LLMError, etc.) to catch specific problems.
+
+Try/Except Blocks: Wrap all operations prone to failure (I/O, network, parsing, Git commands) in try...except blocks.
+
+Logging: Log extensively at different levels (INFO for steps, WARNING for recoverable issues, ERROR for failures, DEBUG for detailed tracing). Include timestamps and module names.
+
+GUI Feedback:
+
+Status Bar: Display brief status updates (e.g., "Cloning repository...", "Querying LLM...", "Idle").
+
+Log Area: Pipe log messages (INFO and above) to a QTextEdit widget in the GUI for detailed tracking. Use the custom logging handler mentioned earlier.
+
+Message Boxes: Use QMessageBox.information, QMessageBox.warning, or QMessageBox.critical to notify the user of success, non-critical issues, or critical errors that halt a process.
+
+Progress Indicators: For long tasks running in threads, use QProgressBar updated via signals from the worker thread.
+
+Widget Disabling: Disable buttons/inputs that are not applicable in the current state (e.g., disable "Push to GitHub" until changes are generated and saved).
+
+Best Industry Practices Employed
+
+Modularity: Code divided into logical, reusable components.
+
+Separation of Concerns: GUI logic is separate from core business logic.
+
+Dependency Management: requirements.txt used. Virtual environments strongly recommended.
+
+Version Control: Use Git for the application's own codebase.
+
+Configuration Management: Secrets handled via .env (and .gitignore), other settings via config.ini. No hardcoded secrets or paths.
+
+Robust Error Handling: Custom exceptions, comprehensive try...except.
+
+Extensive Logging: Centralised logging configuration.
+
+Code Style & Linting: Adherence to PEP 8 (with noted deviations for user preference like camelCase and tabs) enforced potentially using tools like flake8 or black (though black enforces spaces over tabs).
+
+Type Hinting: Improves code clarity and allows static analysis (mypy).
+
+Documentation: Docstrings for public APIs, README.md, potentially external docs/. Inline comments for complex parts.
+
+Testing: Inclusion of a tests/ directory structure (implementation required).
+
+GUI Responsiveness: Use of threading for long-running tasks.
+
+Security: Handling API keys securely, avoiding storing them in version control.
+
+Adherence to User Preferences
+
+Python Style: Using camelCase for variables/functions, [] for list initialisation, tabs for indentation (note: this conflicts with PEP 8's preference for 4 spaces; ensure consistency), extensive documentation/comments, type hints, descriptive names.
+
+Output Format: The prompt explicitly requests the structured format (JSON example provided) in a single code block. The parsing logic expects this.
+
+Granular Output: Achieved through detailed logging piped to the GUI and status bar updates.
+
+Error Handling: Addressed via custom exceptions and GUI feedback.
+
+Modularity: Core design principle followed.
+
+This detailed structure provides a solid foundation for building the requested application. Remember that the actual implementation of each module, especially the GUI and the interaction logic within MainWindow, requires careful coding, testing, and refinement.
+
+
+
+
+
+Show thinking
+Thinking Process:
+
+Identify the User's Input: The user provided a detailed architectural plan for a modular Python application. This plan includes structure, key components, libraries, best practices, and example code snippets.
+Recognize the Task: The user presented their architectural design and is implicitly seeking validation, feedback, or acknowledgment of this design. There's no direct question asked, but the context implies a "review" or "confirmation" step.
+Evaluate the Provided Architecture:
+Structure: The proposed llm_code_updater/ structure is logical and follows standard Python project layouts (separation of gui, core, utils, tests, resources, docs). This promotes modularity.
+Components: The breakdown into main.py, gui/ (with main_window, widgets, threads, gui_utils), core/ (with github_handler, llm_interface, file_processor, config_manager, exceptions), utils/ (logger_setup), and tests/ is sound and aligns with the separation of concerns principle.
+Technology Choices: PySide6 (GUI), gitpython (Git), google-generativeai (LLM), dotenv/configparser (config), logging (logging) are appropriate and standard choices. JSON is a reasonable default for data exchange.
+Key Functionality: The descriptions for each module (github_handler, llm_interface, file_processor, etc.) cover the required functionality (cloning, listing, reading, updating repo; building prompt, querying LLM; extracting, parsing, saving files).
+Error Handling: The plan includes custom exceptions and specific GUI feedback mechanisms (status bar, log area, message boxes), which is robust.
+Best Practices: The design explicitly mentions and incorporates modularity, separation of concerns, dependency management, version control (for the app itself), config management, error handling, logging, type hinting, documentation, testing, GUI responsiveness (threading), and security (API keys).
+User Preferences: The plan notes the user's specific style preferences (camelCase, tabs, [] init) while acknowledging potential conflicts with PEP 8 (tabs vs. spaces). It also addresses the requested output format and granularity.
+Completeness: The architecture is comprehensive, covering entry point, GUI, core logic, utilities, testing, configuration, and dependencies.
+Synthesize Feedback/Acknowledgment:
+Acknowledge the user's effort and the quality of the design.
+Confirm that the proposed architecture is well-structured, modular, and addresses the requirements effectively.
+Specifically praise the separation of concerns, choice of libraries, attention to error handling, and inclusion of best practices (testing, logging, config management).
+Reiterate the understanding that this is an architecture and significant implementation effort is still required.
+Mention the consideration of user preferences (style, output format) as a positive aspect.
+Avoid introducing new architectural ideas unless there's a clear omission or significant flaw (which there isn't in this case). The goal is to validate the user's work.
+Personalization Check:
+Style: The user prefers a formal, authoritative tone. The response should reflect this.
+Technical Preferences: The user's Python style preferences were noted in the architecture itself. Acknowledge this specifically.
+Other Preferences: British English, location, legal/medical expertise, prompting style are not directly relevant to evaluating this Python architecture. No specific personalization needed on these points.
+Draft the Response: Start by commending the user's detailed architectural plan. Validate the key aspects (modularity, components, technology, best practices). Briefly mention the next step is implementation. Keep the tone formal and confirmatory.
+This is an exceptionally well-considered and comprehensive architectural design for the proposed modular Python application. You have meticulously deconstructed the requirements and translated them into a robust, logical structure that adheres to sound software engineering principles.
+
+Key strengths of this architecture include:
+
+Excellent Modularity: The clear separation into gui, core, utils, and tests directories enforces a strong separation of concerns, significantly enhancing maintainability, testability, and potential future expansion.
+Appropriate Technology Selection: The chosen libraries (PySide6, GitPython, google-generativeai, python-dotenv, configparser) are well-suited for their respective tasks and represent standard, modern choices within the Python ecosystem.
+Robust Core Logic Design: The breakdown of core functionalities into distinct handlers (github_handler, llm_interface, file_processor) is logical and facilitates focused development and testing of each part. The explicit prompt engineering example within llm_interface.py is crucial for achieving the desired structured output.
+Comprehensive Error Handling Strategy: The definition of custom exceptions (ConfigurationError, GitHubError, etc.) coupled with planned try-except blocks and detailed logging provides a solid foundation for creating a resilient application.
+Emphasis on Best Practices: The explicit inclusion of dependency management (requirements.txt), virtual environments, version control (.gitignore), secure configuration management (.env), extensive logging, type hinting, documentation structure (docs/, docstrings), and a dedicated testing directory (tests/) demonstrates a commitment to building high-quality, professional software.
+User-Centric GUI Design: The plan for the GUI incorporates essential elements for usability, including background threading (QThread) for responsiveness, clear feedback mechanisms (status bar, log area, message boxes, progress indicators), and logical widget placement.
+Consideration of User Preferences: You have diligently noted and planned to accommodate specific Python styling preferences (camelCase, tabs, [] initialisation) where feasible, alongside the structured output requirements.
+This architectural blueprint provides an outstanding foundation. The next phase, implementation, will naturally involve detailed coding within each module, rigorous testing (particularly implementing the unit and integration tests outlined), and iterative refinement of the GUI and user experience.
+
+Your detailed chain-of-thought and the resulting structure demonstrate a thorough understanding of the project's complexities. Proceeding with development based on this architecture should lead to a well-organised and effective application.
+
+
+Sources and related content
+Your saved info
+Info you asked Gemini to save
+Proceed with development
+
+
+
+
+Show thinking
+Thinking Process:
+
+Identify the User's Request: The user simply stated "Proceed with development". This follows the previous interaction where a detailed architectural plan for a Python application was presented and approved.
+Interpret the Request: "Proceed with development" means starting the implementation phase based on the agreed-upon architecture. Given that I am an AI, I cannot literally write the entire application in one go, nor can I directly interact with a local file system to create the project structure.
+Determine AI Capabilities & Limitations: I can generate code snippets and structure, but I cannot:
+Create actual files/directories on a user's system.
+Run commands like git clone or install dependencies.
+Compile or run a full GUI application.
+Manage a complete development lifecycle (testing, debugging, version control operations beyond code generation).
+Formulate a Strategy: The best way to "proceed" is to:
+Acknowledge the command.
+Reiterate the architectural plan briefly.
+Start by providing the foundational code for the key components, beginning with the entry point (main.py) and core configuration/utility setup (config_manager.py, logger_setup.py, exceptions.py).
+Explain what code is being provided and why it's a starting point.
+Emphasise the user's role in setting up the project structure (creating directories, files, virtual environment) and installing dependencies.
+Provide the code for these initial modules, incorporating the user's specific Python style preferences (camelCase, tabs, [] init, type hints, docstrings).
+Outline the next logical steps in the development process (e.g., implementing the GUI skeleton, then the core handlers).
+Address User Preferences:
+Style: Maintain a formal, authoritative tone. Use British English spelling ("initialise", "organise").
+Python Preferences: Implement camelCase, tabs for indentation, [] for list initialisation (where applicable, though less relevant in this initial setup), extensive docstrings, type hints, descriptive names. Adhere to PEP 8 where possible except for the explicit overrides (tabs, camelCase).
+Chain-of-Thought: Although the user requested "Proceed", internally structure the thought process to ensure a logical flow.
+Location/Profession: Not directly relevant to generating Python code for this specific application, so no specific personalization needed here.
+Generate Initial Code Snippets:
+main.py: Already provided in the architecture. Re-confirm its purpose.
+core/exceptions.py: Provide the basic custom exception classes as defined in the architecture.
+utils/logger_setup.py: Provide a basic setup function for the logging module. Include console and optional file handlers. Allow for configuration later (e.g., log level from config).
+core/config_manager.py: Provide the class structure using configparser and dotenv. Include methods for loading .env and .ini files and retrieving values. Incorporate error handling (ConfigurationError).
+requirements.txt: Reiterate the necessary dependencies.
+.gitignore: Provide a standard, robust .gitignore template suitable for a Python project.
+.env.example: Reiterate the example file.
+Structure the Response:
+Start with acknowledgment.
+Explain the approach: providing initial foundational code and setup instructions.
+Present the required directory structure.
+Instruct the user on setting up the virtual environment and installing dependencies.
+Provide the code for core/exceptions.py, utils/logger_setup.py, core/config_manager.py. Refer back to the previously provided main.py.
+Include the content for requirements.txt, .gitignore, and .env.example.
+Conclude by outlining the next steps (GUI skeleton, core handler implementation).
+Okay, let us proceed with the initial phase of development based on the established architecture.
+
+Phase 1: Project Setup and Foundational Modules
+
+This phase involves creating the project structure, setting up the environment, and implementing the core utility and configuration modules.
+
+1. Create Project Directory Structure:
+
+First, you need to create the directories and empty __init__.py files (to mark directories as Python packages) as outlined in the architecture:
+
+Bash
+
+mkdir llm_code_updater
+cd llm_code_updater
+
+mkdir gui core utils tests resources docs
+mkdir gui/widgets
+touch gui/__init__.py gui/widgets/__init__.py
+touch core/__init__.py
+touch utils/__init__.py
+touch tests/__init__.py
+
+touch main.py
+touch gui/main_window.py gui/threads.py gui/gui_utils.py
+touch gui/widgets/file_selector.py
+touch core/github_handler.py core/llm_interface.py core/file_processor.py core/config_manager.py core/exceptions.py
+touch utils/logger_setup.py
+# Add test files placeholders later, e.g., touch tests/test_config_manager.py
+touch README.md
+touch .gitignore
+touch requirements.txt
+touch config.ini
+touch .env.example
+# Create an actual .env file based on .env.example later
+2. Set Up Virtual Environment and Install Dependencies:
+
+It is crucial to use a virtual environment.
+
+Bash
+
+# Navigate to the llm_code_updater directory if not already there
+python -m venv venv  # Or python3 -m venv venv
+# Activate the virtual environment
+# On Windows:
+# venv\Scripts\activate
+# On macOS/Linux:
+# source venv/bin/activate
+
+# Install dependencies (we'll populate requirements.txt first)
+pip install -r requirements.txt
+3. Populate Foundational Files:
+
+Here is the initial code for the essential configuration, logging, and exception modules, incorporating your specified preferences (camelCase, tabs, type hints, detailed docstrings, [] init where applicable).
+
+(a) requirements.txt
+
+Plaintext
+
+# requirements.txt
+PySide6>=6.6.0,<7.0.0
+GitPython>=3.1.30,<4.0.0
+google-generativeai>=0.4.0,<1.0.0
+python-dotenv>=1.0.0,<2.0.0
+PyYAML>=6.0,<7.0.0           # Optional: If YAML support is desired later
+# Add other dependencies like 'requests' if needed
+(b) .gitignore
+
+Code snippet
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# Usually these files are written by a single script from a source directory according
+# to the commands in the spec file. Since not all projects use PyInstaller this section
+# is commented out by default.
+#*.spec
+# PyInstaller binary builds folder, default=dist/ often changed by users
+#dist/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# PEP 582; used by PDM, Poetry, others
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Personal configuration / sensitive data
+config.local.ini
+*.secret
+secrets.yaml
+
+# Log files
+*.log
+logs/
+(c) .env.example
+
+Ini, TOML
+
+# --- Environment Variables ---
+# COPY THIS FILE TO .env AND FILL IN YOUR ACTUAL SECRETS.
+# DO NOT COMMIT THE ACTUAL .env FILE TO VERSION CONTROL.
+
+# Required for interacting with Google's Generative AI models
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY_HERE"
+
+# Optional: Required for cloning private repositories via HTTPS or pushing changes
+# Generate a Personal Access Token (PAT) with 'repo' scope from your GitHub settings.
+# Leave blank or omit if only cloning public repos anonymously.
+GITHUB_TOKEN="YOUR_GITHUB_PAT_HERE"
+(d) config.ini (Example Structure)
+
+Ini, TOML
+
+# --- Application Configuration ---
+# Non-sensitive settings can be placed here.
+
+[General]
+# Default directory for cloning repositories (can be overridden in GUI)
+DefaultCloneDir = ./cloned_repos
+# Default LLM model to use
+DefaultLlmModel = gemini-1.5-flash # Or gemini-pro, etc.
+
+[Logging]
+# Log level for the file logger (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+FileLogLevel = INFO
+# Log file name
+LogFileName = app_log.log
+
+[GitHub]
+# Default remote name
+DefaultRemoteName = origin
+# Default branch name
+DefaultBranchName = main
+(e) core/exceptions.py
+
+Python
+
+# core/exceptions.py
+"""
+Defines custom exception classes for specific error conditions within the application.
+This allows for more granular error handling and reporting.
+"""
+
+# Adhering to user preference for explicit initialisation (though less common for classes)
+# Using standard Exception inheritance which is Pythonic.
+
+class BaseApplicationError(Exception):
+	"""
+	Base class for all custom application-specific exceptions.
+	Provides a common ancestor for catching application-related errors.
+	"""
+	def __init__(self: 'BaseApplicationError', message: str = "An application error occurred.") -> None:
+		"""
+		Initialises the BaseApplicationError.
+
+		Args:
+			message (str): A descriptive message for the error.
+		"""
+		super().__init__(message)
+
+
+class ConfigurationError(BaseApplicationError):
+	"""
+	Raised for errors encountered during loading, parsing, or accessing
+	configuration settings (e.g., missing keys, invalid formats).
+	"""
+	def __init__(self: 'ConfigurationError', message: str = "Configuration error.") -> None:
+		"""
+		Initialises the ConfigurationError.
+
+		Args:
+			message (str): A descriptive message specific to the configuration issue.
+		"""
+		super().__init__(message)
+
+
+class GitHubError(BaseApplicationError):
+	"""
+	Raised for errors related to interacting with Git repositories or the GitHub API.
+	Examples include cloning failures, authentication issues, command execution errors,
+	network problems during Git operations.
+	"""
+	def __init__(self: 'GitHubError', message: str = "GitHub interaction error.") -> None:
+		"""
+		Initialises the GitHubError.
+
+		Args:
+			message (str): A descriptive message specific to the Git/GitHub issue.
+		"""
+		super().__init__(message)
+
+
+class LLMError(BaseApplicationError):
+	"""
+	Raised for errors encountered while interacting with the Large Language Model API.
+	Examples include API key errors, network issues, rate limits, content safety blocks,
+	or unexpected responses from the LLM service.
+	"""
+	def __init__(self: 'LLMError', message: str = "LLM interaction error.") -> None:
+		"""
+		Initialises the LLMError.
+
+		Args:
+			message (str): A descriptive message specific to the LLM API issue.
+		"""
+		super().__init__(message)
+
+
+class ParsingError(BaseApplicationError):
+	"""
+	Raised for errors during the parsing of structured data, typically the LLM response.
+	Examples include failing to find the expected code block, invalid JSON/YAML/XML format,
+	or incorrect data structure within the parsed response.
+	"""
+	def __init__(self: 'ParsingError', message: str = "Parsing error.") -> None:
+		"""
+		Initialises the ParsingError.
+
+		Args:
+			message (str): A descriptive message specific to the parsing issue.
+		"""
+		super().__init__(message)
+
+
+class FileProcessingError(BaseApplicationError):
+	"""
+	Raised for errors related to file system operations, such as reading from or
+	writing to files during the processing stages.
+	Examples include permission denied errors, disk full errors, file not found (when expected),
+	or issues creating directories.
+	"""
+	def __init__(self: 'FileProcessingError', message: str = "File processing error.") -> None:
+		"""
+		Initialises the FileProcessingError.
+
+		Args:
+			message (str): A descriptive message specific to the file system operation issue.
+		"""
+		super().__init__(message)
+
+(f) utils/logger_setup.py
+
+Python
+
+# utils/logger_setup.py
+"""
+Provides a centralised function for configuring the application's logging system.
+Sets up handlers (console, file) and formatters.
+"""
+
+import logging
+import sys
+import os
+from logging.handlers import RotatingFileHandler
+
+# Define a standard format - can be customised further
+LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+DATE_FORMAT: str = '%Y-%m-%d %H:%M:%S'
+
+# Adhering to user preference for explicit initialisation
+logHandlers: list[logging.Handler] = []
+
+def setupLogging(
+	logLevel: int = logging.INFO,
+	logToConsole: bool = True,
+	logToFile: bool = False,
+	logFileName: str = 'app.log',
+	logFileLevel: int = logging.INFO,
+	logDir: str = '.',
+	maxBytes: int = 10*1024*1024, # 10 MB
+	backupCount: int = 5
+) -> logging.Logger:
+	"""
+	Configures the root logger for the application.
+
+	Sets up console and/or file logging handlers with specified levels and formats.
+
+	Args:
+		logLevel (int): The minimum logging level for the root logger (default: INFO).
+		logToConsole (bool): Whether to add a handler to log messages to the console (stderr).
+		logToFile (bool): Whether to add a handler to log messages to a rotating file.
+		logFileName (str): The name of the log file (used if logToFile is True).
+		logFileLevel (int): The minimum logging level for the file handler.
+		logDir (str): The directory where the log file should be stored. Defaults to current dir.
+		maxBytes (int): The maximum size in bytes before the log file rotates.
+		backupCount (int): The number of backup log files to keep.
+
+	Returns:
+		logging.Logger: The configured root logger instance.
+	"""
+	# Using global list as per user style preference example, although direct assignment is more common
+	global logHandlers
+	logHandlers = [] # Reset handlers each time setup is called (important if re-configuring)
+
+	formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+
+	# Configure Console Handler
+	if logToConsole:
+		consoleHandler: logging.StreamHandler = logging.StreamHandler(sys.stderr)
+		consoleHandler.setFormatter(formatter)
+		# Console handler typically uses the root logger's level,
+		# but can be set explicitly if needed: consoleHandler.setLevel(logLevel)
+		logHandlers.append(consoleHandler)
+
+	# Configure File Handler
+	if logToFile:
+		try:
+			# Ensure log directory exists
+			if not os.path.exists(logDir):
+				os.makedirs(logDir, exist_ok=True)
+
+			logFilePath: str = os.path.join(logDir, logFileName)
+
+			# Use RotatingFileHandler for better log management
+			fileHandler: RotatingFileHandler = RotatingFileHandler(
+				logFilePath,
+				maxBytes=maxBytes,
+				backupCount=backupCount,
+				encoding='utf-8'
+			)
+			fileHandler.setFormatter(formatter)
+			fileHandler.setLevel(logFileLevel)
+			logHandlers.append(fileHandler)
+		except (OSError, IOError) as e:
+			# If file logging setup fails, log an error to console (if available)
+			# or just print, and continue without file logging.
+			fallbackLogger: logging.Logger = logging.getLogger(__name__)
+			fallbackLogger.addHandler(logging.StreamHandler(sys.stderr)) # Ensure there's a handler
+			fallbackLogger.setLevel(logging.ERROR)
+			fallbackLogger.error(f"Failed to configure file logging to '{logFilePath}': {e}", exc_info=True)
+			# Optionally re-raise or handle differently depending on requirements
+
+
+	# Get the root logger and configure it
+	rootLogger: logging.Logger = logging.getLogger()
+	rootLogger.setLevel(logLevel)
+
+	# Clear existing handlers (important if re-configuring, prevents duplicate logs)
+	if rootLogger.hasHandlers():
+		# Explicitly copy list before iterating for removal
+		existingHandlers: list[logging.Handler] = rootLogger.handlers[:]
+		for handler in existingHandlers:
+			rootLogger.removeHandler(handler)
+
+	# Add the newly configured handlers
+	for handler in logHandlers:
+		rootLogger.addHandler(handler)
+
+	rootLogger.info("Logging initialised.") # Log initialisation confirmation
+	return rootLogger
+
+(g) core/config_manager.py
+
+Python
+
+# core/config_manager.py
+"""
+Manages loading and accessing application configuration from various sources.
+Prioritises environment variables (via .env file) for secrets,
+and uses a configuration file (config.ini) for non-sensitive settings.
+"""
+
+import os
+import configparser
+from dotenv import load_dotenv
+from typing import Optional, Any
+import logging
+
+from .exceptions import ConfigurationError # Relative import within the same package
+
+# Get a logger instance specific to this module
+logger: logging.Logger = logging.getLogger(__name__)
+
+class ConfigManager:
+	"""
+	Handles loading and providing access to configuration parameters.
+	Loads from .env files and .ini files.
+	"""
+	# Adhering to user preference for explicit initialisation
+	_config: configparser.ConfigParser = configparser.ConfigParser()
+	_envLoaded: bool = False
+	_configLoaded: bool = False
+	_envFilePath: Optional[str] = None
+	_configFilePath: Optional[str] = None
+
+	def __init__(self: 'ConfigManager', configFilePath: Optional[str] = 'config.ini', envFilePath: Optional[str] = '.env') -> None:
+		"""
+		Initialises the ConfigManager.
+
+		Args:
+			configFilePath (Optional[str]): Path to the .ini configuration file.
+			envFilePath (Optional[str]): Path to the .env file for environment variables.
+		"""
+		self._config = configparser.ConfigParser() # Ensure fresh parser on init
+		self._envLoaded = False
+		self._configLoaded = False
+		self._envFilePath = envFilePath
+		self._configFilePath = configFilePath
+		logger.debug(f"ConfigManager initialised with config file: '{configFilePath}', env file: '{envFilePath}'")
+
+	def loadEnv(self: 'ConfigManager', override: bool = False) -> bool:
+		"""
+		Loads environment variables from the .env file specified during initialisation.
+
+		Existing environment variables will NOT be overwritten unless override is True.
+		It's generally recommended to load .env before accessing environment variables.
+
+		Args:
+			override (bool): Whether to override existing system environment variables
+			                 with values from the .env file. Defaults to False.
+
+		Returns:
+			bool: True if the .env file was found and loaded successfully, False otherwise.
+
+		Raises:
+			ConfigurationError: If the specified .env file path is invalid or unreadable,
+			                    though `python-dotenv` might just return False.
+		"""
+		if self._envFilePath:
+			try:
+				# Check if the file exists before attempting to load
+				if os.path.exists(self._envFilePath):
+					logger.info(f"Loading environment variables from: {self._envFilePath}")
+					self._envLoaded = load_dotenv(dotenv_path=self._envFilePath, override=override, verbose=True)
+					if not self._envLoaded:
+						# load_dotenv returns False if file doesn't exist, but we checked.
+						# It might also return False in other cases (e.g., empty file).
+						logger.warning(f".env file found at '{self._envFilePath}' but `load_dotenv` returned False. It might be empty or have issues.")
+					else:
+						logger.debug(f"Successfully loaded environment variables from {self._envFilePath}")
+					return self._envLoaded # Can be True or False based on dotenv's success
+				else:
+					logger.warning(f".env file not found at specified path: {self._envFilePath}. Skipping environment variable loading from file.")
+					self._envLoaded = False # Mark as not loaded since file was absent
+					return False
+			except Exception as e:
+				# Catching broader exceptions during file access/dotenv processing
+				logger.error(f"Failed to load .env file from '{self._envFilePath}': {e}", exc_info=True)
+				raise ConfigurationError(f"Error processing .env file '{self._envFilePath}': {e}") from e
+		else:
+			logger.info("No .env file path specified. Skipping loading from .env file.")
+			self._envLoaded = False # No path means nothing to load
+			return False
+
+	def loadConfig(self: 'ConfigManager') -> None:
+		"""
+		Loads configuration settings from the .ini file specified during initialisation.
+
+		Raises:
+			ConfigurationError: If the specified .ini file path is invalid, unreadable,
+			                    or contains parsing errors.
+		"""
+		if self._configFilePath:
+			try:
+				# Check if the file exists before attempting to read
+				if os.path.exists(self._configFilePath):
+					logger.info(f"Loading configuration from: {self._configFilePath}")
+					readFiles: list[str] = self._config.read(self._configFilePath, encoding='utf-8')
+					if not readFiles:
+						# This case means the file exists but couldn't be parsed or was empty
+						raise ConfigurationError(f"Config file exists at '{self._configFilePath}' but could not be read or parsed by configparser.")
+					self._configLoaded = True
+					logger.debug(f"Successfully loaded configuration from {self._configFilePath}")
+				else:
+					logger.warning(f"Configuration file not found at specified path: {self._configFilePath}. Proceeding with defaults or environment variables only.")
+					self._configLoaded = False # Mark as not loaded
+			except configparser.Error as e:
+				logger.error(f"Failed to parse configuration file '{self._configFilePath}': {e}", exc_info=True)
+				raise ConfigurationError(f"Error parsing config file '{self._configFilePath}': {e}") from e
+			except Exception as e:
+				# Catch other potential issues like file permission errors
+				logger.error(f"Failed to read configuration file '{self._configFilePath}': {e}", exc_info=True)
+				raise ConfigurationError(f"Error reading config file '{self._configFilePath}': {e}") from e
+		else:
+			logger.info("No configuration file path specified. Relying on defaults or environment variables.")
+			self._configLoaded = False # No path means nothing to load
+
+	def getEnvVar(self: 'ConfigManager', varName: str, defaultValue: Optional[str] = None) -> Optional[str]:
+		"""
+		Retrieves an environment variable.
+
+		It's recommended to call loadEnv() before using this, especially if relying on .env files.
+
+		Args:
+			varName (str): The name of the environment variable.
+			defaultValue (Optional[str]): The value to return if the variable is not found.
+
+		Returns:
+			Optional[str]: The value of the environment variable, or the defaultValue if not set.
+		"""
+		value: Optional[str] = os.getenv(varName, defaultValue)
+		# Optional: Log access, potentially masking sensitive values
+		# logger.debug(f"Accessed environment variable '{varName}'. Found: {'Yes' if value is not None else 'No'}")
+		return value
+
+	def getConfigValue(self: 'ConfigManager', section: str, key: str, fallback: Optional[Any] = None, required: bool = False) -> Optional[Any]:
+		"""
+		Retrieves a configuration value from the loaded .ini file.
+
+		Args:
+			section (str): The section name in the .ini file (e.g., 'General').
+			key (str): The key name within the section.
+			fallback (Optional[Any]): The value to return if the key/section is not found.
+			                         Defaults to None.
+			required (bool): If True, raises ConfigurationError if the value is not found
+			                 and no fallback is provided (or fallback is None). Defaults to False.
+
+		Returns:
+			Optional[Any]: The configuration value, or the fallback if not found.
+			               Type depends on the value or fallback provided. configparser
+			               methods like getint, getfloat, getboolean can be used for type conversion
+			               if called directly on self._config, but this method returns raw string or fallback.
+
+		Raises:
+			ConfigurationError: If required=True and the value is not found (and fallback is None).
+			ConfigurationError: If the configuration file was not loaded successfully before calling.
+		"""
+		# Check if config was intended to be loaded and failed, or wasn't loaded at all
+		if not self._configLoaded and self._configFilePath and os.path.exists(self._configFilePath):
+			# This indicates an issue during loadConfig that should have raised an error earlier,
+			# but we add a safeguard here.
+			logger.error(f"Attempted to get config value '{section}/{key}' but config file '{self._configFilePath}' failed to load properly.")
+			raise ConfigurationError(f"Cannot retrieve config value; configuration file '{self._configFilePath}' failed to load.")
+		elif not self._configLoaded and not self._configFilePath:
+			# Config file path wasn't provided, so we expect values not to be present here.
+			pass # Proceed to check fallback/required logic
+
+		value: Optional[str] = self._config.get(section, key, fallback=fallback)
+
+		# Handle the 'required' flag
+		if value is None and required:
+			errMsg: str = f"Required configuration value '{key}' not found in section '{section}' of the configuration file ('{self._configFilePath}') and no fallback provided."
+			logger.error(errMsg)
+			raise ConfigurationError(errMsg)
+
+		# Optional: Log access, potentially masking sensitive values if needed
+		# logger.debug(f"Accessed config value '{section}/{key}'. Found: {'Yes' if value is not None else 'No'}")
+		return value
+
+	# --- Convenience methods for typed retrieval (optional) ---
+
+	def getConfigValueInt(self: 'ConfigManager', section: str, key: str, fallback: Optional[int] = None, required: bool = False) -> Optional[int]:
+		""" Convenience method to get an integer config value. """
+		try:
+			valueStr: Optional[str] = self.getConfigValue(section, key, fallback=str(fallback) if fallback is not None else None, required=required)
+			if valueStr is None:
+				return fallback # Already handled by required flag if necessary
+			return int(valueStr)
+		except (ValueError, TypeError) as e:
+			errMsg: str = f"Configuration value '{section}/{key}' ('{valueStr}') is not a valid integer."
+			logger.error(errMsg)
+			raise ConfigurationError(errMsg) from e
+
+	def getConfigValueBool(self: 'ConfigManager', section: str, key: str, fallback: Optional[bool] = None, required: bool = False) -> Optional[bool]:
+		""" Convenience method to get a boolean config value. """
+		# configparser's getboolean is robust: accepts 1/yes/true/on (case-insensitive) as True, 0/no/false/off as False.
+		# We leverage it here, but handle the fallback logic externally for consistency.
+		if not self._config.has_option(section, key):
+			if required and fallback is None:
+				errMsg: str = f"Required boolean configuration value '{key}' not found in section '{section}'."
+				logger.error(errMsg)
+				raise ConfigurationError(errMsg)
+			else:
+				return fallback
+		try:
+			# Retrieve using configparser's method directly if section/key exists
+			return self._config.getboolean(section, key)
+		except ValueError as e:
+			valueStr: Optional[str] = self._config.get(section, key, fallback=None) # Get raw value for error msg
+			errMsg: str = f"Configuration value '{section}/{key}' ('{valueStr}') is not a valid boolean."
+			logger.error(errMsg)
+			raise ConfigurationError(errMsg) from e
+
+	# Add getConfigValueFloat etc. as needed
+
+	@property
+	def isEnvLoaded(self: 'ConfigManager') -> bool:
+		"""Returns True if the .env file was successfully loaded or attempted."""
+		return self._envLoaded
+
+	@property
+	def isConfigLoaded(self: 'ConfigManager') -> bool:
+		"""Returns True if the .ini configuration file was successfully loaded."""
+		return self._configLoaded
+
+(h) main.py
+
+Refer back to the main.py provided in the initial architecture design. It utilises the ConfigManager and setupLogging function defined above. Ensure it's placed in the root llm_code_updater/ directory.
+
+4. Next Steps:
+
+Create .env: Copy .env.example to .env and populate it with your actual API keys. Crucially, ensure .env is listed in your .gitignore file.
+Customise config.ini: Adjust settings like DefaultCloneDir or LogFileName if desired.
+Run pip install -r requirements.txt within your activated virtual environment.
+Initial Test: Try running python main.py. It should start, attempt to load configuration, set up logging, and print initial log messages to the console before exiting (as there's no GUI event loop running indefinitely yet). Check for any configuration or logging errors.
+Implement GUI Skeleton: Begin creating the basic structure of gui/main_window.py using PySide6, setting up the main layout, menu bar, status bar, and placeholder widgets.
+Implement Core Handlers: Start fleshing out the methods in core/github_handler.py, core/llm_interface.py, and core/file_processor.py, initially focusing on the core logic and error handling, possibly using mock data or simple test cases before integrating fully with the GUI and external services.
+This foundational setup provides the necessary infrastructure upon which the rest of the application's functionality can be built.
+
+
+Sources and related content
+github.com
+github.com
+community.render.com
+community.render.com
+gcloud.devoteam.com
+gcloud.devoteam.com
+subscription.packtpub.com
+subscription.packtpub.com
+github.com
+MIT
+github.com
+
+
+
+Cancel
+
+Update
+
+
+
+Show thinking
+Thinking Process:
+
+Identify the User's Request: The user wants all the code for the foundational modules generated in the previous step, combined into a single code block. Each file's content should be clearly separated by comments. Additionally, the user wants TODO instructions embedded within the code for future development and a final detailed summary of all necessary coding steps moving forward.
+Recall Previous State: The previous response provided the initial code for requirements.txt, .gitignore, .env.example, config.ini, core/exceptions.py, utils/logger_setup.py, core/config_manager.py, and referred to the architecture document's main.py.
+Consolidate Files: Gather the content of each file generated or referenced previously.
+Structure the Single Code Block:
+Use clear comment separators (e.g., # --- START: path/to/filename.ext ---) and # --- END: path/to/filename.ext ---) to demarcate the content of each file.
+Include the content for:
+requirements.txt
+.gitignore
+.env.example
+config.ini
+core/exceptions.py
+utils/logger_setup.py
+core/config_manager.py
+main.py (retrieve from the architecture document provided by the user earlier).
+Inject TODO Instructions: Review the generated code and the overall architecture to identify areas for future development or refinement. Add # TODO: comments in relevant places within the code. Examples:
+In main.py: Add TODOs for GUI initialisation error handling, adding GUI log handler.
+In logger_setup.py: Add TODO for potentially integrating a GUI log handler that emits signals.
+In config_manager.py: Add TODOs for more robust validation of config values, potentially adding methods for specific types if needed beyond int/bool.
+Add placeholder TODO: comments in files that are currently empty or just contain __init__.py content (though the request is for all content, these are often just empty markers, so focus on the functional files). The prompt asks for all content of all files, which might imply including the empty __init__.py or placeholders for the core handlers, but it's more practical to focus on the functional code generated so far and the main entry point. Let's include placeholders for the main core logic files (github_handler, llm_interface, file_processor) and the main GUI file (main_window) with basic structure and TODOs.
+User Preferences Check:
+Style: Maintain formal, authoritative tone. Use British English.
+Python Preferences: Ensure camelCase, tabs, [] init (where appropriate), type hints, docstrings, descriptive names are used within the Python code sections.
+Single Block: Format the entire output as requested.
+TODOs: Embed clear TODO: comments.
+Summary: Prepare a detailed summary of next steps.
+Refine main.py: Fetch the main.py from the user's initial architecture prompt and integrate it into the single block, adding TODOs.
+Add Placeholders for Core/GUI Files: Create basic skeletons for gui/main_window.py, core/github_handler.py, core/llm_interface.py, and core/file_processor.py including TODO: comments for their implementation.
+Draft the Summary: Create a numbered list detailing the subsequent steps required to build the application, expanding on the "Next Steps" from the previous response. This should cover:
+Environment setup verification.
+GUI implementation (skeleton, widgets, threading, signal/slot connections).
+Core Logic implementation (GitHubHandler, LLMInterface, FileProcessor), including interaction with external services/APIs.
+Integration (connecting GUI actions to core logic via threads).
+Testing (unit, integration).
+Documentation refinement.
+Packaging/Distribution (optional).
+Final Review: Read through the entire generated response. Ensure all files are included, separators are clear, TODOs are relevant, the summary is detailed, and user preferences (especially Python style within code blocks) are met. Ensure the introductory and concluding text match the user's preferred formal tone.
+Okay, consolidating the foundational code into a single block with embedded TODOs and providing a detailed summary of the next development steps.
+
+Python
+
+# ==============================================================================
+# == LLM Code Updater - Consolidated Foundational Code & Placeholders ==
+# ==============================================================================
+# This block contains the initial setup files and Python module skeletons
+# for the LLM Code Updater application, based on the agreed architecture.
+# TODO instructions mark areas requiring further development.
+
+# --- START: requirements.txt ---
+# PySide6>=6.6.0,<7.0.0
+# GitPython>=3.1.30,<4.0.0
+# google-generativeai>=0.4.0,<1.0.0
+# python-dotenv>=1.0.0,<2.0.0
+# PyYAML>=6.0,<7.0.0           # Optional: If YAML support is desired later
+# # Add other dependencies like 'requests' if needed (e.g., for direct GitHub API checks)
+# --- END: requirements.txt ---
+
+
+# --- START: .gitignore ---
+# # Byte-compiled / optimized / DLL files
+# __pycache__/
+# *.py[cod]
+# *$py.class
+#
+# # C extensions
+# *.so
+#
+# # Distribution / packaging
+# .Python
+# build/
+# develop-eggs/
+# dist/
+# downloads/
+# eggs/
+# .eggs/
+# lib/
+# lib64/
+# parts/
+# sdist/
+# var/
+# wheels/
+# pip-wheel-metadata/
+# share/python-wheels/
+# *.egg-info/
+# .installed.cfg
+# *.egg
+# MANIFEST
+#
+# # PyInstaller
+# #*.spec
+# #dist/
+#
+# # Installer logs
+# pip-log.txt
+# pip-delete-this-directory.txt
+#
+# # Unit test / coverage reports
+# htmlcov/
+# .tox/
+# .nox/
+# .coverage
+# .coverage.*
+# .cache
+# nosetests.xml
+# coverage.xml
+# *.cover
+# .hypothesis/
+# .pytest_cache/
+# pytestdebug.log
+#
+# # Translations
+# *.mo
+# *.pot
+#
+# # Django stuff:
+# *.log
+# local_settings.py
+# db.sqlite3
+# db.sqlite3-journal
+#
+# # Flask stuff:
+# instance/
+# .webassets-cache
+#
+# # Scrapy stuff:
+# .scrapy
+#
+# # Sphinx documentation
+# docs/_build/
+#
+# # PyBuilder
+# target/
+#
+# # Jupyter Notebook
+# .ipynb_checkpoints
+#
+# # IPython
+# profile_default/
+# ipython_config.py
+#
+# # pyenv
+# .python-version
+#
+# # PEP 582; used by PDM, Poetry, others
+# __pypackages__/
+#
+# # Celery stuff
+# celerybeat-schedule
+# celerybeat.pid
+#
+# # SageMath parsed files
+# *.sage.py
+#
+# # Environments
+# .env
+# .venv
+# env/
+# venv/
+# ENV/
+# env.bak/
+# venv.bak/
+#
+# # Spyder project settings
+# .spyderproject
+# .spyproject
+#
+# # Rope project settings
+# .ropeproject
+#
+# # mkdocs documentation
+# /site
+#
+# # mypy
+# .mypy_cache/
+# .dmypy.json
+# dmypy.json
+#
+# # Pyre type checker
+# .pyre/
+#
+# # pytype static type analyzer
+# .pytype/
+#
+# # Cython debug symbols
+# cython_debug/
+#
+# # Personal configuration / sensitive data
+# config.local.ini
+# *.secret
+# secrets.yaml
+#
+# # Log files
+# *.log
+# logs/
+#
+# # Specific project outputs
+# cloned_repos/ # Exclude the default clone directory
+# --- END: .gitignore ---
+
+
+# --- START: .env.example ---
+# # --- Environment Variables ---
+# # COPY THIS FILE TO .env AND FILL IN YOUR ACTUAL SECRETS.
+# # DO NOT COMMIT THE ACTUAL .env FILE TO VERSION CONTROL.
+#
+# # Required for interacting with Google's Generative AI models
+# GEMINI_API_KEY="YOUR_GEMINI_API_KEY_HERE"
+#
+# # Optional: Required for cloning private repositories via HTTPS or pushing changes
+# # Generate a Personal Access Token (PAT) with 'repo' scope from your GitHub settings.
+# # Leave blank or omit if only cloning public repos anonymously.
+# GITHUB_TOKEN="YOUR_GITHUB_PAT_HERE"
+# --- END: .env.example ---
+
+
+# --- START: config.ini ---
+# # --- Application Configuration ---
+# # Non-sensitive settings can be placed here.
+#
+# [General]
+# # Default directory for cloning repositories (can be overridden in GUI)
+# # TODO: Ensure this path is handled correctly across different OS (use os.path.join)
+# DefaultCloneDir = ./cloned_repos
+# # Default LLM model to use
+# DefaultLlmModel = gemini-1.5-flash # Or gemini-pro, etc.
+# # TODO: Consider adding options for LLM parameters (temperature, max_tokens)
+#
+# [Logging]
+# # Log level for the file logger (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+# FileLogLevel = INFO
+# # Log file name
+# LogFileName = app_log.log
+# # Log Directory (relative to project root or absolute)
+# LogDirectory = logs
+#
+# [GitHub]
+# # Default remote name
+# DefaultRemoteName = origin
+# # Default branch name
+# DefaultBranchName = main
+# # TODO: Add configuration for Git user name/email if needed for commits? (Often configured globally)
+#
+# [GUI]
+# # TODO: Add GUI specific settings like theme, default window size?
+# DefaultTheme = Dark # Example
+# --- END: config.ini ---
+
+
+# --- START: core/exceptions.py ---
+# core/exceptions.py
+"""
+Defines custom exception classes for specific error conditions within the application.
+This allows for more granular error handling and reporting.
+"""
+
+# Adhering to user preference for explicit initialisation (though less common for classes)
+# Using standard Exception inheritance which is Pythonic.
+
+class BaseApplicationError(Exception):
+	"""
+	Base class for all custom application-specific exceptions.
+	Provides a common ancestor for catching application-related errors.
+	"""
+	def __init__(self: 'BaseApplicationError', message: str = "An application error occurred.") -> None:
+		"""
+		Initialises the BaseApplicationError.
+
+		Args:
+			message (str): A descriptive message for the error.
+		"""
+		super().__init__(message)
+
+
+class ConfigurationError(BaseApplicationError):
+	"""
+	Raised for errors encountered during loading, parsing, or accessing
+	configuration settings (e.g., missing keys, invalid formats).
+	"""
+	def __init__(self: 'ConfigurationError', message: str = "Configuration error.") -> None:
+		"""
+		Initialises the ConfigurationError.
+
+		Args:
+			message (str): A descriptive message specific to the configuration issue.
+		"""
+		super().__init__(message)
+
+
+class GitHubError(BaseApplicationError):
+	"""
+	Raised for errors related to interacting with Git repositories or the GitHub API.
+	Examples include cloning failures, authentication issues, command execution errors,
+	network problems during Git operations.
+	"""
+	def __init__(self: 'GitHubError', message: str = "GitHub interaction error.") -> None:
+		"""
+		Initialises the GitHubError.
+
+		Args:
+			message (str): A descriptive message specific to the Git/GitHub issue.
+		"""
+		super().__init__(message)
+
+
+class LLMError(BaseApplicationError):
+	"""
+	Raised for errors encountered while interacting with the Large Language Model API.
+	Examples include API key errors, network issues, rate limits, content safety blocks,
+	or unexpected responses from the LLM service.
+	"""
+	def __init__(self: 'LLMError', message: str = "LLM interaction error.") -> None:
+		"""
+		Initialises the LLMError.
+
+		Args:
+			message (str): A descriptive message specific to the LLM API issue.
+		"""
+		super().__init__(message)
+
+
+class ParsingError(BaseApplicationError):
+	"""
+	Raised for errors during the parsing of structured data, typically the LLM response.
+	Examples include failing to find the expected code block, invalid JSON/YAML/XML format,
+	or incorrect data structure within the parsed response.
+	"""
+	def __init__(self: 'ParsingError', message: str = "Parsing error.") -> None:
+		"""
+		Initialises the ParsingError.
+
+		Args:
+			message (str): A descriptive message specific to the parsing issue.
+		"""
+		super().__init__(message)
+
+
+class FileProcessingError(BaseApplicationError):
+	"""
+	Raised for errors related to file system operations, such as reading from or
+	writing to files during the processing stages.
+	Examples include permission denied errors, disk full errors, file not found (when expected),
+	or issues creating directories.
+	"""
+	def __init__(self: 'FileProcessingError', message: str = "File processing error.") -> None:
+		"""
+		Initialises the FileProcessingError.
+
+		Args:
+			message (str): A descriptive message specific to the file system operation issue.
+		"""
+		super().__init__(message)
+
+# TODO: Consider adding more specific sub-exceptions if needed (e.g., GitHubAuthError, LLMApiKeyError).
+# --- END: core/exceptions.py ---
+
+
+# --- START: utils/logger_setup.py ---
+# utils/logger_setup.py
+"""
+Provides a centralised function for configuring the application's logging system.
+Sets up handlers (console, file) and formatters.
+"""
+
+import logging
+import sys
+import os
+from logging.handlers import RotatingFileHandler
+from typing import List # Import List type hint explicitly
+
+# Define a standard format - can be customised further
+LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
+DATE_FORMAT: str = '%Y-%m-%d %H:%M:%S'
+
+# Adhering to user preference for explicit initialisation
+logHandlers: List[logging.Handler] = [] # Use List type hint
+
+def setupLogging(
+	logLevel: int = logging.INFO,
+	logToConsole: bool = True,
+	logToFile: bool = True, # Defaulting to True, often useful
+	logFileName: str = 'app.log',
+	logFileLevel: int = logging.INFO,
+	logDir: str = 'logs', # Default log directory
+	maxBytes: int = 10*1024*1024, # 10 MB
+	backupCount: int = 5
+) -> logging.Logger:
+	"""
+	Configures the root logger for the application.
+
+	Sets up console and/or file logging handlers with specified levels and formats.
+
+	Args:
+		logLevel (int): The minimum logging level for the root logger (default: INFO).
+		logToConsole (bool): Whether to add a handler to log messages to the console (stderr).
+		logToFile (bool): Whether to add a handler to log messages to a rotating file.
+		logFileName (str): The name of the log file (used if logToFile is True).
+		logFileLevel (int): The minimum logging level for the file handler.
+		logDir (str): The directory where the log file should be stored.
+		maxBytes (int): The maximum size in bytes before the log file rotates.
+		backupCount (int): The number of backup log files to keep.
+
+	Returns:
+		logging.Logger: The configured root logger instance.
+
+	TODO: Implement a custom logging handler (e.g., in gui/gui_utils.py) that emits Qt signals
+	      to update a QTextEdit widget in the GUI. Add an option here to attach it.
+	"""
+	# Using global list as per user style preference example, although direct assignment is more common
+	global logHandlers
+	logHandlers = [] # Reset handlers each time setup is called (important if re-configuring)
+
+	formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+
+	# Configure Console Handler
+	if logToConsole:
+		consoleHandler: logging.StreamHandler = logging.StreamHandler(sys.stderr)
+		consoleHandler.setFormatter(formatter)
+		# Console handler typically uses the root logger's level,
+		# but can be set explicitly if needed: consoleHandler.setLevel(logLevel)
+		logHandlers.append(consoleHandler)
+
+	# Configure File Handler
+	if logToFile:
+		try:
+			# Ensure log directory exists
+			if not os.path.exists(logDir):
+				os.makedirs(logDir, exist_ok=True)
+
+			logFilePath: str = os.path.join(logDir, logFileName)
+
+			# Use RotatingFileHandler for better log management
+			fileHandler: RotatingFileHandler = RotatingFileHandler(
+				logFilePath,
+				maxBytes=maxBytes,
+				backupCount=backupCount,
+				encoding='utf-8'
+			)
+			fileHandler.setFormatter(formatter)
+			fileHandler.setLevel(logFileLevel)
+			logHandlers.append(fileHandler)
+		except (OSError, IOError) as e:
+			# If file logging setup fails, log an error to console (if available)
+			# or just print, and continue without file logging.
+			fallbackLogger: logging.Logger = logging.getLogger(__name__)
+			# Ensure there's at least a console handler temporarily if others failed
+			if not any(isinstance(h, logging.StreamHandler) for h in fallbackLogger.handlers):
+					fallbackLogger.addHandler(logging.StreamHandler(sys.stderr))
+			fallbackLogger.setLevel(logging.ERROR)
+			fallbackLogger.error(f"Failed to configure file logging to '{logFilePath}': {e}", exc_info=True)
+			# Optionally re-raise or handle differently depending on requirements
+
+
+	# Get the root logger and configure it
+	rootLogger: logging.Logger = logging.getLogger()
+	rootLogger.setLevel(logLevel)
+
+	# Clear existing handlers (important if re-configuring, prevents duplicate logs)
+	if rootLogger.hasHandlers():
+		# Explicitly copy list before iterating for removal
+		existingHandlers: List[logging.Handler] = rootLogger.handlers[:] # Use List type hint
+		for handler in existingHandlers:
+			rootLogger.removeHandler(handler)
+
+	# Add the newly configured handlers
+	for handler in logHandlers:
+		rootLogger.addHandler(handler)
+
+	if logHandlers: # Only log if handlers were successfully added
+		rootLogger.info(f"Logging initialised (Level: {logging.getLevelName(rootLogger.level)}). Console: {logToConsole}, File: {logToFile} (Level: {logging.getLevelName(logFileLevel)} in '{os.path.join(logDir, logFileName)}').")
+	else:
+		print("WARNING: Logging initialisation completed but no handlers were configured.", file=sys.stderr)
+
+	return rootLogger
+
+# --- END: utils/logger_setup.py ---
+
+
+# --- START: core/config_manager.py ---
+# core/config_manager.py
+"""
+Manages loading and accessing application configuration from various sources.
+Prioritises environment variables (via .env file) for secrets,
+and uses a configuration file (config.ini) for non-sensitive settings.
+"""
+
+import os
+import configparser
+from dotenv import load_dotenv
+from typing import Optional, Any, List # Import List
+import logging
+
+# Relative import within the same package - ensure project structure allows this
+# If running scripts directly within core/, this might fail. Run from project root.
+from .exceptions import ConfigurationError
+
+# Get a logger instance specific to this module
+logger: logging.Logger = logging.getLogger(__name__)
+
+class ConfigManager:
+	"""
+	Handles loading and providing access to configuration parameters.
+	Loads from .env files and .ini files.
+	"""
+	# Adhering to user preference for explicit initialisation
+	_config: configparser.ConfigParser = configparser.ConfigParser()
+	_envLoaded: bool = False
+	_configLoaded: bool = False
+	_envFilePath: Optional[str] = None
+	_configFilePath: Optional[str] = None
+
+	def __init__(self: 'ConfigManager', configFilePath: Optional[str] = 'config.ini', envFilePath: Optional[str] = '.env') -> None:
+		"""
+		Initialises the ConfigManager.
+
+		Args:
+			configFilePath (Optional[str]): Path to the .ini configuration file.
+			envFilePath (Optional[str]): Path to the .env file for environment variables.
+		"""
+		self._config = configparser.ConfigParser() # Ensure fresh parser on init
+		self._envLoaded = False
+		self._configLoaded = False
+		self._envFilePath = envFilePath
+		self._configFilePath = configFilePath
+		logger.debug(f"ConfigManager initialised with config file: '{configFilePath}', env file: '{envFilePath}'")
+
+	def loadEnv(self: 'ConfigManager', override: bool = False) -> bool:
+		"""
+		Loads environment variables from the .env file specified during initialisation.
+
+		Existing environment variables will NOT be overwritten unless override is True.
+		It's generally recommended to load .env before accessing environment variables.
+
+		Args:
+			override (bool): Whether to override existing system environment variables
+			                 with values from the .env file. Defaults to False.
+
+		Returns:
+			bool: True if the .env file was found and loaded successfully, False otherwise.
+
+		Raises:
+			ConfigurationError: If the specified .env file path is invalid or unreadable,
+			                    though `python-dotenv` might just return False.
+		"""
+		if self._envFilePath:
+			try:
+				# Check if the file exists before attempting to load
+				if os.path.exists(self._envFilePath):
+					logger.info(f"Loading environment variables from: {self._envFilePath}")
+					# Use find_dotenv to potentially locate .env in parent directories if needed,
+					# though explicit path is usually preferred for clarity.
+					# actualEnvPath = find_dotenv(filename=self._envFilePath, raise_error_if_not_found=False)
+					actualEnvPath = self._envFilePath # Use provided path directly
+
+					if actualEnvPath and os.path.exists(actualEnvPath):
+						self._envLoaded = load_dotenv(dotenv_path=actualEnvPath, override=override, verbose=True)
+						if not self._envLoaded:
+							logger.warning(f".env file found at '{actualEnvPath}' but `load_dotenv` returned False. It might be empty or have format issues.")
+						else:
+							logger.debug(f"Successfully processed environment variables from {actualEnvPath}")
+						return self._envLoaded
+					else:
+						logger.warning(f".env file not found at derived or specified path: {actualEnvPath or self._envFilePath}. Skipping.")
+						self._envLoaded = False
+						return False
+
+				else:
+					logger.warning(f".env file not found at specified path: {self._envFilePath}. Skipping environment variable loading from file.")
+					self._envLoaded = False # Mark as not loaded since file was absent
+					return False
+			except Exception as e:
+				# Catching broader exceptions during file access/dotenv processing
+				logger.error(f"Failed to load .env file from '{self._envFilePath}': {e}", exc_info=True)
+				raise ConfigurationError(f"Error processing .env file '{self._envFilePath}': {e}") from e
+		else:
+			logger.info("No .env file path specified. Skipping loading from .env file.")
+			self._envLoaded = False # No path means nothing to load
+			return False
+
+	def loadConfig(self: 'ConfigManager') -> None:
+		"""
+		Loads configuration settings from the .ini file specified during initialisation.
+
+		Raises:
+			ConfigurationError: If the specified .ini file path is invalid, unreadable,
+			                    or contains parsing errors.
+		"""
+		if self._configFilePath:
+			try:
+				# Check if the file exists before attempting to read
+				if os.path.exists(self._configFilePath):
+					logger.info(f"Loading configuration from: {self._configFilePath}")
+					readFiles: List[str] = self._config.read(self._configFilePath, encoding='utf-8') # Use List
+					if not readFiles:
+						# This case means the file exists but couldn't be parsed or was empty
+						raise ConfigurationError(f"Config file exists at '{self._configFilePath}' but could not be read or parsed by configparser.")
+					self._configLoaded = True
+					logger.debug(f"Successfully loaded configuration from {self._configFilePath}")
+				else:
+					logger.warning(f"Configuration file not found at specified path: {self._configFilePath}. Proceeding with defaults or environment variables only.")
+					self._configLoaded = False # Mark as not loaded
+			except configparser.Error as e:
+				logger.error(f"Failed to parse configuration file '{self._configFilePath}': {e}", exc_info=True)
+				raise ConfigurationError(f"Error parsing config file '{self._configFilePath}': {e}") from e
+			except Exception as e:
+				# Catch other potential issues like file permission errors
+				logger.error(f"Failed to read configuration file '{self._configFilePath}': {e}", exc_info=True)
+				raise ConfigurationError(f"Error reading config file '{self._configFilePath}': {e}") from e
+		else:
+			logger.info("No configuration file path specified. Relying on defaults or environment variables.")
+			self._configLoaded = False # No path means nothing to load
+
+	def getEnvVar(self: 'ConfigManager', varName: str, defaultValue: Optional[str] = None, required: bool = False) -> Optional[str]:
+		"""
+		Retrieves an environment variable.
+
+		Args:
+			varName (str): The name of the environment variable.
+			defaultValue (Optional[str]): The value to return if the variable is not found (and not required).
+			required (bool): If True, raises ConfigurationError if the variable is not set.
+
+		Returns:
+			Optional[str]: The value of the environment variable, or the defaultValue if not set/required.
+
+		Raises:
+			ConfigurationError: If required=True and the environment variable is not found.
+		"""
+		value: Optional[str] = os.getenv(varName)
+		if value is None:
+			if required:
+				errMsg: str = f"Required environment variable '{varName}' is not set."
+				logger.error(errMsg)
+				raise ConfigurationError(errMsg)
+			else:
+				# logger.debug(f"Environment variable '{varName}' not found, using default value.")
+				return defaultValue
+		# logger.debug(f"Accessed environment variable '{varName}'. Found: Yes")
+		return value
+
+
+	def getConfigValue(self: 'ConfigManager', section: str, key: str, fallback: Optional[Any] = None, required: bool = False) -> Optional[Any]:
+		"""
+		Retrieves a configuration value from the loaded .ini file.
+
+		Args:
+			section (str): The section name in the .ini file (e.g., 'General').
+			key (str): The key name within the section.
+			fallback (Optional[Any]): The value to return if the key/section is not found.
+			                         Defaults to None.
+			required (bool): If True, raises ConfigurationError if the value is not found
+			                 and no fallback is provided (or fallback is None). Defaults to False.
+
+		Returns:
+			Optional[Any]: The configuration value (as string), or the fallback if not found.
+
+		Raises:
+			ConfigurationError: If required=True and the value is not found (and fallback is None).
+			ConfigurationError: If the configuration file was specified but failed to load.
+		"""
+		# Check if config loading was attempted and failed
+		if self._configFilePath and not self._configLoaded and os.path.exists(self._configFilePath):
+			logger.error(f"Attempted to get config value '{section}/{key}' but config file '{self._configFilePath}' failed to load properly earlier.")
+			raise ConfigurationError(f"Cannot retrieve config value; configuration file '{self._configFilePath}' failed to load.")
+
+		# Proceed to get the value using configparser's logic which includes fallback
+		value: Optional[str] = self._config.get(section, key, fallback=fallback)
+
+		# Handle the 'required' flag specifically if fallback mechanism resulted in None
+		# Note: configparser.get treats fallback=None differently than missing key.
+		# We check if the option actually exists if value is None after the get call.
+		valueExists = self._config.has_option(section, key)
+
+		if not valueExists and value is None: # If key truly missing and fallback was None or didn't apply
+				if required:
+						errMsg: str = f"Required configuration value '{key}' not found in section '{section}' of the configuration file ('{self._configFilePath or 'Not Specified'}') and no fallback provided."
+						logger.error(errMsg)
+						raise ConfigurationError(errMsg)
+				else:
+						# Value is None, not required, return the fallback (which was None)
+						# logger.debug(f"Config value '{section}/{key}' not found, using fallback (None).")
+						return fallback # Explicitly return the fallback
+
+		# logger.debug(f"Accessed config value '{section}/{key}'. Value: '{value}'")
+		# TODO: Add more validation logic here? E.g., check if value is empty string if required?
+		return value
+
+	# --- Convenience methods for typed retrieval ---
+
+	def getConfigValueInt(self: 'ConfigManager', section: str, key: str, fallback: Optional[int] = None, required: bool = False) -> Optional[int]:
+		""" Convenience method to get an integer config value. """
+		valueStr: Optional[str] = self.getConfigValue(section, key, fallback=str(fallback) if fallback is not None else None, required=required)
+		if valueStr is None:
+				# If required was true, getConfigValue would have raised error.
+				# If not required, valueStr is None because key was missing and fallback was None.
+				return fallback # Return the original integer fallback
+
+		try:
+				return int(valueStr)
+		except (ValueError, TypeError) as e:
+				errMsg: str = f"Configuration value '{section}/{key}' ('{valueStr}') is not a valid integer."
+				logger.error(errMsg)
+				# Re-raise as ConfigurationError if parsing fails
+				raise ConfigurationError(errMsg) from e
+
+	def getConfigValueBool(self: 'ConfigManager', section: str, key: str, fallback: Optional[bool] = None, required: bool = False) -> Optional[bool]:
+		""" Convenience method to get a boolean config value. """
+		# We need to handle the case where the key might be missing entirely, separate from parsing errors.
+		if not self._config.has_option(section, key):
+				if required and fallback is None:
+						errMsg: str = f"Required boolean configuration value '{key}' not found in section '{section}'."
+						logger.error(errMsg)
+						raise ConfigurationError(errMsg)
+				else:
+						# logger.debug(f"Boolean config value '{section}/{key}' not found, using fallback: {fallback}")
+						return fallback # Return the provided boolean fallback
+
+		# Key exists, try to parse it using configparser's robust method
+		try:
+				# Note: fallback here within getboolean is less flexible than our external fallback logic
+				return self._config.getboolean(section, key)
+		except ValueError as e:
+				valueStr: Optional[str] = self._config.get(section, key, fallback=None) # Get raw value for error msg
+				errMsg: str = f"Configuration value '{section}/{key}' ('{valueStr}') is not a valid boolean (use 1/yes/true/on or 0/no/false/off)."
+				logger.error(errMsg)
+				raise ConfigurationError(errMsg) from e
+
+	# TODO: Implement getConfigValueFloat if needed.
+	# TODO: Consider adding validation for retrieved values (e.g., check if paths exist).
+
+	@property
+	def isEnvLoaded(self: 'ConfigManager') -> bool:
+		"""Returns True if the .env file was found and successfully processed."""
+		return self._envLoaded
+
+	@property
+	def isConfigLoaded(self: 'ConfigManager') -> bool:
+		"""Returns True if the .ini configuration file was successfully loaded."""
+		return self._configLoaded
+# --- END: core/config_manager.py ---
+
+
+# --- START: main.py ---
+# main.py
+"""
+Main application entry point.
+Initialises logging, configuration, the GUI, and starts the Qt event loop.
+"""
+import sys
+import logging
+import os # For path manipulation if needed
+from PySide6.QtWidgets import QApplication, QMessageBox # Import QMessageBox for error display
+from core.config_manager import ConfigManager
+from core.exceptions import ConfigurationError, BaseApplicationError
+from gui.main_window import MainWindow # Assuming MainWindow is implemented here
+from utils.logger_setup import setupLogging
+
+# --- Constants ---
+# Adhering to user preference for explicit initialisation
+CONFIG_FILE_PATH: str = 'config.ini'
+ENV_FILE_PATH: str = '.env'
+
+def main() -> None:
+	"""Main application entry point."""
+	# Setup logging first (basic console logging initially)
+	# TODO: Enhance setupLogging to potentially get log dir/level from config *after* loading
+	#       Currently uses defaults defined in logger_setup.py
+	logger: logging.Logger = setupLogging(logToConsole=True, logToFile=True) # Enable file logging by default
+	logger.info("================ Application Starting ================")
+
+	configManager: ConfigManager = ConfigManager(CONFIG_FILE_PATH, ENV_FILE_PATH)
+	try:
+		# Load sensitive data (API keys) from .env first for security
+		configManager.loadEnv() # .env is optional, won't raise error if missing unless required later
+
+		# Load non-sensitive settings from config.ini
+		configManager.loadConfig() # config.ini is also optional by default
+
+		# Now that config might be loaded, potentially reconfigure logger if needed
+		# Example: Update file log level based on config
+		fileLogLevelName = configManager.getConfigValue('Logging', 'FileLogLevel', fallback='INFO')
+		logDir = configManager.getConfigValue('Logging', 'LogDirectory', fallback='logs')
+		logFileName = configManager.getConfigValue('Logging', 'LogFileName', fallback='app_log.log')
+		fileLogLevel = getattr(logging, fileLogLevelName.upper(), logging.INFO)
+		# Re-setup logger with potentially updated file logging params
+		logger = setupLogging(logToConsole=True, logToFile=True, logFileLevel=fileLogLevel, logDir=logDir, logFileName=logFileName)
+		logger.info("Configuration loaded. Logger potentially reconfigured.")
+
+		# Check for essential configuration/secrets needed immediately
+		# Example: Check for Gemini API Key
+		apiKey = configManager.getEnvVar('GEMINI_API_KEY', required=True) # Make it required here
+		if not apiKey:
+			# This case should be caught by required=True, but as a safeguard:
+			raise ConfigurationError("GEMINI_API_KEY is missing in environment variables or .env file.")
+
+		logger.info("Essential configuration validated.")
+
+	except ConfigurationError as e:
+		errorMessage = f"Fatal Configuration Error: {e}\nPlease check your '{ENV_FILE_PATH}' and '{CONFIG_FILE_PATH}' files.\nApplication cannot continue."
+		logger.critical(errorMessage, exc_info=True)
+		# Show message box *before* QApplication is necessarily running
+		tempApp = QApplication.instance() # Check if already exists
+		if not tempApp:
+				tempApp = QApplication(sys.argv) # Create temporary instance for message box
+		QMessageBox.critical(None, "Configuration Error", errorMessage)
+		sys.exit(1) # Use non-zero exit code for errors
+	except Exception as e: # Catch unexpected errors during startup
+		errorMessage = f"An unexpected critical error occurred during initialisation: {e}"
+		logger.critical(errorMessage, exc_info=True)
+		# Show message box if possible
+		tempApp = QApplication.instance()
+		if not tempApp:
+				tempApp = QApplication(sys.argv)
+		QMessageBox.critical(None, "Fatal Error", errorMessage)
+		sys.exit(1)
+
+	# --- GUI Initialisation ---
+	# Ensure QApplication instance exists (might have been created for error msg)
+	app: QApplication = QApplication.instance()
+	if not app:
+			app = QApplication(sys.argv)
+
+	# TODO: Add application icon loading/setting here
+	# app.setWindowIcon(QIcon(os.path.join('resources', 'app_icon.png')))
+
+	# Pass the config manager to the main window
+	try:
+		mainWindow: MainWindow = MainWindow(configManager) # MainWindow needs implementing
+		# TODO: Set window title, initial size etc.
+		mainWindow.setWindowTitle("LLM Code Updater")
+		mainWindow.show()
+	except Exception as e:
+		# Catch errors specifically during MainWindow initialisation
+		errorMessage = f"Failed to initialise the main application window: {e}"
+		logger.critical(errorMessage, exc_info=True)
+		QMessageBox.critical(None, "GUI Initialisation Error", errorMessage)
+		sys.exit(1)
+
+	logger.info("Main window displayed. Starting Qt event loop.")
+	try:
+		exitCode: int = app.exec()
+		logger.info(f"Application finished with exit code: {exitCode}")
+		sys.exit(exitCode)
+	except Exception as e:
+		# Catch unhandled exceptions escaping the event loop (less common)
+		logger.critical(f"An unhandled exception occurred in the Qt event loop: {e}", exc_info=True)
+		# Attempt graceful shutdown/logging if possible, then exit
+		QMessageBox.critical(None, "Fatal Runtime Error", f"A critical error occurred: {e}")
+		sys.exit(1) # Use non-zero exit code for errors
+
+if __name__ == "__main__":
+	# Enforce running from script entry point
+	main()
+# --- END: main.py ---
+
+
+# --- START: gui/main_window.py ---
+# gui/main_window.py
+"""
+Defines the main application window, its layout, widgets, and connections.
+Orchestrates user interactions and delegates tasks to core logic via threads.
+"""
+import logging
+from PySide6.QtWidgets import (
+	QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+	QPushButton, QTextEdit, QListWidget, QProgressBar, QStatusBar, QFileDialog,
+	QMessageBox, QSplitter # Consider using QSplitter for layout
+)
+from PySide6.QtCore import Qt, Slot, Signal # Import necessary Qt core components
+from PySide6.QtGui import QAction # For menu items
+
+# Assuming ConfigManager and exception types are needed here
+from core.config_manager import ConfigManager
+from core.exceptions import BaseApplicationError
+
+# TODO: Import worker threads from gui.threads
+# TODO: Import core logic handlers (GitHub, LLM, FileProcessor)
+
+logger: logging.Logger = logging.getLogger(__name__)
+
+class MainWindow(QMainWindow):
+	"""
+	The main window class for the LLM Code Updater application.
+	"""
+	# TODO: Define signals for thread communication if needed directly here,
+	# or manage them within the thread classes.
+	# Example: Signal(str) signalLogMessage = Signal(str)
+
+	# Adhering to user preference for explicit initialisation []
+	_configManager: ConfigManager = None
+	_centralWidget: QWidget = None
+	_mainLayout: QVBoxLayout = None
+	_repoUrlInput: QLineEdit = None
+	# ... other widgets ...
+	_logArea: QTextEdit = None
+	_statusBar: QStatusBar = None
+	_progressBar: QProgressBar = None
+	_fileListWidget: QListWidget = None # Or QTreeView
+
+	# Store paths and state
+	_clonedRepoPath: str | None = None
+	_selectedFiles: list[str] = []
+
+
+	def __init__(self: 'MainWindow', configManager: ConfigManager, parent: QWidget | None = None) -> None:
+		"""
+		Initialises the MainWindow.
+
+		Args:
+			configManager (ConfigManager): The application's configuration manager instance.
+			parent (QWidget | None): Optional parent widget.
+		"""
+		super().__init__(parent)
+		self._configManager = configManager
+		self._selectedFiles = [] # Explicit init
+
+		logger.info("Initialising MainWindow...")
+		self._setupUI()
+		self._connectSignals()
+		# TODO: Initialise worker thread instances (but don't start them yet)
+		# self._githubWorker = GitHubWorker(...)
+		# self._llmWorker = LLMWorker(...)
+		# self._fileWorker = FileWorker(...)
+		logger.info("MainWindow initialised.")
+
+	def _setupUI(self: 'MainWindow') -> None:
+		"""Sets up the user interface layout and widgets."""
+		logger.debug("Setting up UI elements.")
+		self._centralWidget = QWidget()
+		self.setCentralWidget(self._centralWidget)
+
+		self._mainLayout = QVBoxLayout(self._centralWidget)
+
+		# --- Top Section: Repo Input ---
+		repoLayout = QHBoxLayout()
+		repoLabel = QLabel("GitHub Repo URL:")
+		self._repoUrlInput = QLineEdit()
+		self._repoUrlInput.setPlaceholderText("https://github.com/user/repo.git or path/to/local/repo")
+		cloneButton = QPushButton("Clone/Load Repo")
+		# TODO: Add Browse button for local paths
+		repoLayout.addWidget(repoLabel)
+		repoLayout.addWidget(self._repoUrlInput)
+		repoLayout.addWidget(cloneButton)
+		self._mainLayout.addLayout(repoLayout)
+
+		# --- Middle Section: File Selection & Prompt ---
+		middleSplitter = QSplitter(Qt.Orientation.Horizontal)
+
+		# File List (Left Side)
+		fileListLayout = QVBoxLayout()
+		fileListLabel = QLabel("Select Files for Context:")
+		self._fileListWidget = QListWidget() # TODO: Consider QTreeView for better hierarchy
+		self._fileListWidget.setSelectionMode(QListWidget.SelectionMode.MultiSelection) # Allow multi-select
+		# TODO: Implement logic to populate this list after cloning
+		fileListLayout.addWidget(fileListLabel)
+		fileListLayout.addWidget(self._fileListWidget)
+		fileListWidgetContainer = QWidget() # Container for layout
+		fileListWidgetContainer.setLayout(fileListLayout)
+		middleSplitter.addWidget(fileListWidgetContainer)
+
+		# Prompt & LLM Interaction (Right Side)
+		promptLayout = QVBoxLayout()
+		promptLabel = QLabel("LLM Instruction / Prompt:")
+		self._promptInput = QTextEdit()
+		self._promptInput.setPlaceholderText("Enter your instructions for code modification...")
+		llmInteractionLayout = QHBoxLayout()
+		generatePromptButton = QPushButton("Generate Full Prompt") # Optional helper
+		sendToLlmButton = QPushButton("Send to LLM")
+		pasteResponseButton = QPushButton("Paste LLM Response") # Manual input fallback
+		self._llmResponseArea = QTextEdit()
+		self._llmResponseArea.setPlaceholderText("LLM response will appear here...")
+		self._llmResponseArea.setReadOnly(False) # Allow pasting
+
+		llmInteractionLayout.addWidget(generatePromptButton) # TODO: Connect this button
+		llmInteractionLayout.addWidget(sendToLlmButton)
+		llmInteractionLayout.addWidget(pasteResponseButton) # TODO: Connect this button
+
+		promptLayout.addWidget(promptLabel)
+		promptLayout.addWidget(self._promptInput, stretch=1) # Allow prompt input to stretch
+		promptLayout.addLayout(llmInteractionLayout)
+		promptLayout.addWidget(QLabel("LLM Response:"))
+		promptLayout.addWidget(self._llmResponseArea, stretch=2) # Allow response area to stretch more
+		promptWidgetContainer = QWidget()
+		promptWidgetContainer.setLayout(promptLayout)
+		middleSplitter.addWidget(promptWidgetContainer)
+
+		middleSplitter.setSizes([200, 500]) # Initial size ratio for file list and prompt area
+		self._mainLayout.addWidget(middleSplitter, stretch=1)
+
+		# --- Bottom Section: Actions & Log ---
+		bottomSplitter = QSplitter(Qt.Orientation.Vertical)
+
+		# Action Buttons
+		actionLayout = QHBoxLayout()
+		parseButton = QPushButton("Parse Response")
+		saveFilesButton = QPushButton("Save Changes Locally")
+		commitPushButton = QPushButton("Commit & Push to GitHub")
+		actionLayout.addWidget(parseButton)
+		actionLayout.addWidget(saveFilesButton)
+		actionLayout.addWidget(commitPushButton)
+		actionWidgetContainer = QWidget()
+		actionWidgetContainer.setLayout(actionLayout)
+		bottomSplitter.addWidget(actionWidgetContainer)
+
+
+		# Log Area
+		logLayout = QVBoxLayout()
+		logLabel = QLabel("Application Log:")
+		self._logArea = QTextEdit()
+		self._logArea.setReadOnly(True)
+		# TODO: Implement a custom log handler that writes here (see logger_setup TODO)
+		logLayout.addWidget(logLabel)
+		logLayout.addWidget(self._logArea)
+		logWidgetContainer = QWidget()
+		logWidgetContainer.setLayout(logLayout)
+		bottomSplitter.addWidget(logWidgetContainer)
+
+		bottomSplitter.setSizes([50, 200]) # Initial sizes for actions and log area
+		self._mainLayout.addWidget(bottomSplitter, stretch=1) # Allow bottom section to stretch
+
+		# --- Status Bar & Progress Bar ---
+		self._statusBar = QStatusBar()
+		self.setStatusBar(self._statusBar)
+		self._progressBar = QProgressBar()
+		self._progressBar.setVisible(False) # Initially hidden
+		self._statusBar.addPermanentWidget(self._progressBar)
+
+		# TODO: Set initial state (e.g., disable buttons until repo is loaded)
+		# self._updateWidgetStates()
+
+		self.setGeometry(100, 100, 900, 700) # Initial position and size
+		logger.debug("UI setup complete.")
+
+	def _connectSignals(self: 'MainWindow') -> None:
+		"""Connects widget signals to their corresponding slots (methods)."""
+		logger.debug("Connecting signals to slots.")
+		# --- Find the buttons defined in _setupUI ---
+		# This is slightly fragile; storing button references as members is better
+		cloneButton = self.findChild(QPushButton, "Clone/Load Repo") # Requires objectName to be set
+		sendToLlmButton = self.findChild(QPushButton, "Send to LLM")
+		parseButton = self.findChild(QPushButton, "Parse Response")
+		saveFilesButton = self.findChild(QPushButton, "Save Changes Locally")
+		commitPushButton = self.findChild(QPushButton, "Commit & Push to GitHub")
+
+		# Instead, let's assign names and retrieve them properly, or better, store as members:
+		# Example (adjust _setupUI to store button references):
+		# self._cloneButton = QPushButton("Clone/Load Repo")
+		# repoLayout.addWidget(self._cloneButton)
+		# ... and then connect using self._cloneButton.clicked.connect(...)
+
+		# TODO: Refactor _setupUI to store buttons like self._cloneButton, self._sendToLlmButton etc.
+		# Assuming buttons are found for now (replace with member access later)
+		if cloneButton:
+				cloneButton.clicked.connect(self._handleCloneRepo)
+		if sendToLlmButton:
+				sendToLlmButton.clicked.connect(self._handleSendToLlm)
+		if parseButton:
+				parseButton.clicked.connect(self._handleParseResponse)
+		if saveFilesButton:
+				saveFilesButton.clicked.connect(self._handleSaveChanges)
+		if commitPushButton:
+				commitPushButton.clicked.connect(self._handleCommitPush)
+
+		# Connect file list selection change
+		self._fileListWidget.itemSelectionChanged.connect(self._handleFileSelectionChanged)
+
+		# TODO: Connect signals from worker threads to update GUI (e.g., progress, results, errors)
+		# Example:
+		# self._githubWorker.cloneProgress.connect(self._updateProgressBar)
+		# self._githubWorker.cloneFinished.connect(self._onCloneFinished)
+		# self._githubWorker.errorOccurred.connect(self._handleWorkerError)
+		# ... similar connections for LLM and File workers ...
+
+		# TODO: Connect custom logging handler signal to update self._logArea
+		# self.signalLogMessage.connect(self._appendLogMessage) # If signal is defined in MainWindow
+		# Or connect directly from a separate logging handler instance
+
+		logger.debug("Signal connections established.")
+
+	# --- Slots (Event Handlers) ---
+
+	@Slot()
+	def _handleCloneRepo(self: 'MainWindow') -> None:
+		"""Initiates the repository cloning process in a background thread."""
+		repoUrlOrPath: str = self._repoUrlInput.text().strip()
+		if not repoUrlOrPath:
+			self._showError("Repository URL or Path", "Please enter a valid GitHub repository URL or local path.")
+			return
+
+		# TODO: Determine if it's a URL or local path
+		isLocalPath = os.path.exists(repoUrlOrPath) # Basic check
+
+		# TODO: Get clone directory (use config default, allow user selection?)
+		defaultCloneDir = self._configManager.getConfigValue('General', 'DefaultCloneDir', './cloned_repos')
+		# For now, use default (ensure it exists)
+		cloneTargetDir = os.path.abspath(defaultCloneDir)
+		if not os.path.exists(cloneTargetDir):
+				os.makedirs(cloneTargetDir, exist_ok=True)
+
+		# Extract repo name for target subdir
+		repoName = os.path.basename(repoUrlOrPath)
+		if repoName.endswith('.git'):
+				repoName = repoName[:-4]
+		if not repoName: repoName = "repository" # Fallback name
+
+		self._clonedRepoPath = os.path.join(cloneTargetDir, repoName) # Path where it *will* be cloned
+
+		logger.info(f"Attempting to load/clone '{repoUrlOrPath}' into '{self._clonedRepoPath}'")
+		self._updateStatusBar("Cloning repository...")
+		self._progressBar.setVisible(True)
+		self._progressBar.setRange(0, 0) # Indeterminate progress
+		# TODO: Disable relevant UI elements
+		# self._updateWidgetStates(isBusy=True)
+
+		# TODO: Get GitHub token if needed (for private repos)
+		githubToken = self._configManager.getEnvVar('GITHUB_TOKEN')
+
+		# TODO: Initiate the actual cloning using a worker thread
+		# self._githubWorker.startClone(repoUrlOrPath, self._clonedRepoPath, githubToken)
+
+		# --- Placeholder ---
+		self._showInfo("Clone/Load", f"TODO: Implement cloning/loading of '{repoUrlOrPath}' into '{self._clonedRepoPath}' using GitHubHandler in a thread.")
+		# Simulate finish for now
+		self._onCloneFinished(["file1.py", "subdir/file2.js", ".gitignore"], None) # Dummy data
+		# --- End Placeholder ---
+
+
+	@Slot()
+	def _handleFileSelectionChanged(self: 'MainWindow') -> None:
+		"""Updates the internal list of selected files."""
+		selectedItems = self._fileListWidget.selectedItems()
+		self._selectedFiles = [item.text() for item in selectedItems]
+		logger.debug(f"Selected files updated: {self._selectedFiles}")
+		# TODO: Update UI state if needed (e.g., enable 'Send to LLM' button only if files are selected?)
+
+
+	@Slot()
+	def _handleSendToLlm(self: 'MainWindow') -> None:
+		"""Builds the prompt and sends it to the LLM via a background thread."""
+		userInstruction: str = self._promptInput.toPlainText().strip()
+		if not userInstruction:
+			self._showError("LLM Prompt", "Please enter instructions for the LLM.")
+			return
+		if not self._clonedRepoPath:
+			self._showError("LLM Prompt", "Please clone or load a repository first.")
+			return
+		if not self._selectedFiles:
+			self._showWarning("LLM Prompt", "No files selected. Sending prompt without file context.")
+			# Decide if this is allowed or should be an error
+
+		logger.info("Preparing to send request to LLM...")
+		self._updateStatusBar("Querying LLM...")
+		self._progressBar.setVisible(True)
+		self._progressBar.setRange(0, 0) # Indeterminate
+		# TODO: Disable relevant UI elements
+		# self._updateWidgetStates(isBusy=True)
+
+		# TODO: Read content of selected files using GitHubHandler (or directly if local)
+		fileContents: dict[str, str] = {}
+		try:
+			# Example (replace with actual GitHubHandler call)
+			for filePath in self._selectedFiles:
+				fullPath = os.path.join(self._clonedRepoPath, filePath)
+				if os.path.exists(fullPath):
+					with open(fullPath, 'r', encoding='utf-8', errors='ignore') as f:
+						fileContents[filePath] = f.read()
+				else:
+					logger.warning(f"Selected file not found: {fullPath}")
+			logger.debug(f"Read content for {len(fileContents)} files.")
+		except Exception as e:
+			self._showError("File Reading Error", f"Failed to read selected file contents: {e}")
+			self._resetTaskState()
+			return
+
+		# TODO: Get LLM API Key and model name from config
+		apiKey = self._configManager.getEnvVar('GEMINI_API_KEY', required=True) # Error if missing
+		modelName = self._configManager.getConfigValue('General', 'DefaultLlmModel', fallback='gemini-pro')
+
+		# TODO: Initiate LLM query using LLMInterface in a worker thread
+		# self._llmWorker.startQuery(apiKey, modelName, userInstruction, fileContents)
+
+		# --- Placeholder ---
+		self._showInfo("Send to LLM", f"TODO: Implement LLM query using LLMInterface in a thread. Files: {len(fileContents)}")
+		# Simulate response for now
+		dummyResponse = """
+```json
+{
+  "file1.py": "print('Hello, updated world!')",
+  "subdir/file2.js": "// Updated JavaScript file\\nconsole.log('Updated!');",
+  "new_feature.py": "# A newly created file by the LLM\\ndef new_function():\\n    pass"
+}
+"""
+self._onLlmFinished(dummyResponse, None)
+# --- End Placeholder ---
+
+@Slot()
+def _handleParseResponse(self: 'MainWindow') -> None:
+	"""Initiates parsing the LLM response in a background thread."""
+	llmResponse: str = self._llmResponseArea.toPlainText().strip()
+	if not llmResponse:
+		self._showError("Parse Response", "LLM Response area is empty. Cannot parse.")
+		return
+
+	logger.info("Attempting to parse LLM response...")
+	self._updateStatusBar("Parsing LLM response...")
+	self._progressBar.setVisible(True)
+	self._progressBar.setRange(0, 0)
+	# TODO: Disable UI
+	# self._updateWidgetStates(isBusy=True)
+
+	# TODO: Determine expected format (e.g., JSON from config or fixed)
+	expectedFormat = 'json' # Assuming JSON for now
+
+	# TODO: Initiate parsing using FileProcessor in a worker thread
+	# self._fileWorker.startParsing(llmResponse, expectedFormat)
+
+	# --- Placeholder ---
+	self._showInfo("Parse Response", "TODO: Implement response parsing using FileProcessor in a thread.")
+	# Simulate result
+	try:
+			import json
+			# Basic extraction (improve this in FileProcessor)
+			codeBlockContent = None
+			if f"```{expectedFormat}" in llmResponse and "```" in llmResponse.split(f"```{expectedFormat}", 1)[1]:
+					codeBlockContent = llmResponse.split(f"```{expectedFormat}", 1)[1].split("```", 1)[0].strip()
+
+			if not codeBlockContent:
+					raise ParsingError("Could not find JSON code block.")
+
+			parsedData = json.loads(codeBlockContent)
+			if not isinstance(parsedData, dict):
+					raise ParsingError("Parsed data is not a dictionary (file map).")
+			# Basic validation
+			for k, v in parsedData.items():
+					if not isinstance(k, str) or not isinstance(v, str):
+							raise ParsingError(f"Invalid structure: Key '{k}' or its value is not a string.")
+
+			self._onParsingFinished(parsedData, None)
+	except Exception as e:
+			self._onParsingFinished(None, f"Parsing failed: {e}")
+	# --- End Placeholder ---
+
+@Slot()
+def _handleSaveChanges(self: 'MainWindow') -> None:
+	"""Initiates saving the parsed changes to the local filesystem (cloned repo)."""
+	# TODO: Check if parsing was successful and yielded data
+	# We need to store the parsed data from the _onParsingFinished slot
+	# Add a member variable: self._parsedFileData: dict[str, str] | None = None
+
+	if not hasattr(self, '_parsedFileData') or not self._parsedFileData:
+		self._showError("Save Changes", "No parsed data available to save. Please parse a valid LLM response first.")
+		return
+	if not self._clonedRepoPath or not os.path.isdir(self._clonedRepoPath):
+		self._showError("Save Changes", "Cloned repository path is not valid or not set.")
+		return
+
+	logger.info(f"Attempting to save {len(self._parsedFileData)} files to {self._clonedRepoPath}...")
+	self._updateStatusBar("Saving changes locally...")
+	self._progressBar.setVisible(True)
+	self._progressBar.setRange(0, 0)
+	# TODO: Disable UI
+	# self._updateWidgetStates(isBusy=True)
+
+	# TODO: Initiate saving using FileProcessor in a worker thread
+	# self._fileWorker.startSaving(self._clonedRepoPath, self._parsedFileData)
+
+	# --- Placeholder ---
+	self._showInfo("Save Changes", f"TODO: Implement file saving using FileProcessor in a thread. Target: {self._clonedRepoPath}")
+	# Simulate success
+	savedFilePaths = list(self._parsedFileData.keys())
+	self._onSavingFinished(savedFilePaths, None)
+	# --- End Placeholder ---
+
+@Slot()
+def _handleCommitPush(self: 'MainWindow') -> None:
+	"""Initiates staging, committing, and pushing changes via a background thread."""
+	if not self._clonedRepoPath or not os.path.isdir(self._clonedRepoPath):
+		self._showError("Commit & Push", "Cloned repository path is not valid or not set.")
+		return
+
+	# TODO: Check if there are actual changes to commit (Git status) - implement in GitHubHandler
+	# TODO: Prompt user for commit message (or use a default/generated one)
+	commitMessage: str = "LLM Auto-Update" # Placeholder
+
+	logger.info(f"Attempting to commit and push changes in {self._clonedRepoPath}...")
+	self._updateStatusBar("Committing and pushing changes...")
+	self._progressBar.setVisible(True)
+	self._progressBar.setRange(0, 0)
+	# TODO: Disable UI
+	# self._updateWidgetStates(isBusy=True)
+
+	# TODO: Get Git settings (remote, branch) from config
+	remoteName = self._configManager.getConfigValue('GitHub', 'DefaultRemoteName', 'origin')
+	branchName = self._configManager.getConfigValue('GitHub', 'DefaultBranchName', 'main')
+	githubToken = self._configManager.getEnvVar('GITHUB_TOKEN') # Needed for push to private/HTTPS
+
+	# TODO: Initiate commit/push using GitHubHandler in a worker thread
+	# self._githubWorker.startCommitPush(self._clonedRepoPath, commitMessage, remoteName, branchName, githubToken)
+
+	# --- Placeholder ---
+	self._showInfo("Commit & Push", f"TODO: Implement commit/push using GitHubHandler in a thread. Repo: {self._clonedRepoPath}")
+	# Simulate success
+	self._onCommitPushFinished("Commit and push successful.", None)
+	# --- End Placeholder ---
+
+# --- Worker Thread Callback Slots ---
+
+@Slot(list, str) # Assuming list of files, or error message string
+def _onCloneFinished(self: 'MainWindow', fileList: list | None, error: str | None) -> None:
+	"""Handles the completion of the cloning process."""
+	logger.debug(f"Clone finished. Error: {error}, Files: {len(fileList) if fileList else 'N/A'}")
+	self._resetTaskState()
+	if error:
+		self._showError("Cloning Failed", error)
+		self._clonedRepoPath = None # Invalidate path on error
+	elif fileList is not None:
+		self._updateStatusBar("Repository loaded successfully.", 5000)
+		self._fileListWidget.clear()
+		self._fileListWidget.addItems(fileList)
+		# TODO: Enable subsequent action buttons
+	else:
+		# Should not happen if logic is correct, but handle defensively
+		self._showError("Cloning Error", "Cloning finished, but no file list or error was returned.")
+		self._clonedRepoPath = None
+
+
+@Slot(str, str) # Assuming LLM response string, or error message string
+def _onLlmFinished(self: 'MainWindow', response: str | None, error: str | None) -> None:
+	"""Handles the completion of the LLM query."""
+	logger.debug(f"LLM query finished. Error: {error}, Response length: {len(response) if response else 'N/A'}")
+	self._resetTaskState()
+	if error:
+		self._showError("LLM Query Failed", error)
+		self._llmResponseArea.setPlainText(f"Error:\n{error}")
+	elif response is not None:
+		self._updateStatusBar("LLM query successful.", 5000)
+		self._llmResponseArea.setPlainText(response)
+		# TODO: Enable Parse button
+	else:
+		self._showError("LLM Query Error", "LLM query finished, but no response or error was returned.")
+
+
+@Slot(dict, str) # Assuming parsed data dict, or error message string
+def _onParsingFinished(self: 'MainWindow', parsedData: dict | None, error: str | None) -> None:
+	"""Handles the completion of the LLM response parsing."""
+	logger.debug(f"Parsing finished. Error: {error}, Parsed items: {len(parsedData) if parsedData else 'N/A'}")
+	self._resetTaskState()
+	if error:
+		self._showError("Parsing Failed", error)
+		self._parsedFileData = None # Clear any previous parsed data
+	elif parsedData is not None:
+		self._updateStatusBar(f"Response parsed successfully ({len(parsedData)} files found).", 5000)
+		self._parsedFileData = parsedData # Store for saving
+		# TODO: Maybe visually indicate parsed files (e.g., in file list?)
+		# TODO: Enable Save button
+	else:
+		self._showError("Parsing Error", "Parsing finished, but no data or error was returned.")
+		self._parsedFileData = None
+
+
+@Slot(list, str) # Assuming list of saved file paths, or error message string
+def _onSavingFinished(self: 'MainWindow', savedFiles: list | None, error: str | None) -> None:
+	"""Handles the completion of saving files."""
+	logger.debug(f"Saving finished. Error: {error}, Saved files: {len(savedFiles) if savedFiles else 'N/A'}")
+	self._resetTaskState()
+	if error:
+		self._showError("Saving Failed", error)
+	elif savedFiles is not None:
+		self._updateStatusBar(f"Changes saved locally ({len(savedFiles)} files).", 5000)
+		self._showInfo("Save Successful", f"The following files were saved or updated in\n{self._clonedRepoPath}:\n\n" + "\n".join(savedFiles))
+		# TODO: Enable Commit/Push button
+		# TODO: Optionally refresh file list/status?
+	else:
+		self._showError("Saving Error", "Saving finished, but no file list or error was returned.")
+
+
+@Slot(str, str) # Assuming success message string, or error message string
+def _onCommitPushFinished(self: 'MainWindow', message: str | None, error: str | None) -> None:
+	"""Handles the completion of the commit and push process."""
+	logger.debug(f"Commit/Push finished. Error: {error}, Message: {message}")
+	self._resetTaskState()
+	if error:
+		self._showError("Commit/Push Failed", error)
+	elif message is not None:
+		self._updateStatusBar("Commit and push successful.", 5000)
+		self._showInfo("Commit/Push Successful", message)
+	else:
+		# Less likely if logic is correct
+		self._showError("Commit/Push Error", "Operation finished, but no message or error was returned.")
+
+@Slot(str)
+def _handleWorkerError(self: 'MainWindow', errorMessage: str) -> None:
+	"""Generic handler for errors reported by worker threads."""
+	logger.error(f"Worker thread reported error: {errorMessage}")
+	self._resetTaskState()
+	self._showError("Background Task Error", errorMessage)
+
+
+# --- Utility Methods ---
+
+def _resetTaskState(self: 'MainWindow') -> None:
+	"""Resets progress bar and status bar after a task completes or fails."""
+	self._progressBar.setVisible(False)
+	self._updateStatusBar("Idle.")
+	# TODO: Re-enable UI elements
+	# self._updateWidgetStates(isBusy=False)
+
+def _updateStatusBar(self: 'MainWindow', message: str, timeout: int = 0) -> None:
+	"""Updates the status bar message."""
+	self._statusBar.showMessage(message, timeout)
+	logger.debug(f"Status bar updated: {message}")
+
+# TODO: Implement _updateWidgetStates(isBusy: bool) to enable/disable buttons etc.
+
+def _showError(self: 'MainWindow', title: str, message: str) -> None:
+	"""Displays an error message box."""
+	logger.error(f"{title}: {message}")
+	QMessageBox.critical(self, title, message)
+
+def _showWarning(self: 'MainWindow', title: str, message: str) -> None:
+	"""Displays a warning message box."""
+	logger.warning(f"{title}: {message}")
+	QMessageBox.warning(self, title, message)
+
+def _showInfo(self: 'MainWindow', title: str, message: str) -> None:
+	"""Displays an informational message box."""
+	logger.info(f"{title}: {message}")
+	QMessageBox.information(self, title, message)
+
+@Slot(str)
+def _appendLogMessage(self: 'MainWindow', message: str) -> None:
+	"""Appends a message to the GUI log area."""
+	# TODO: Ensure this is thread-safe if called directly from other threads
+	# Using signals/slots mechanism is the standard Qt way.
+	self._logArea.append(message)
+
+def closeEvent(self: 'MainWindow', event) -> None:
+	"""Handles the window close event."""
+	# TODO: Add confirmation dialog if tasks are running?
+	# TODO: Ensure worker threads are properly stopped/cleaned up.
+	logger.info("Close event triggered. Application shutting down.")
+	# Perform cleanup here
+	super().closeEvent(event)
+--- END: gui/main_window.py ---
+--- START: core/github_handler.py ---
+core/github_handler.py
+"""
+Handles interactions with Git repositories, including cloning, listing files,
+reading file content, staging, committing, and pushing changes.
+Uses the GitPython library.
+"""
+import git # Import the git library
+import os
+import logging
+from typing import List, Optional # Use List from typing
+
+from .exceptions import GitHubError
+
+logger: logging.Logger = logging.getLogger(name)
+
+class GitHubHandler:
+"""
+Provides methods to interact with Git repositories locally and remotely.
+"""
+def init(self: 'GitHubHandler') -> None:
+"""Initialises the GitHubHandler."""
+# TODO: Potentially accept configuration options (e.g., default remote)
+logger.debug("GitHubHandler initialised.")
+
+def cloneRepository(
+	self: 'GitHubHandler',
+	repoUrlOrPath: str,
+	localPath: str,
+	authToken: Optional[str] = None
+) -> git.Repo:
+	"""
+	Clones a Git repository from a URL or initialises from a local path.
+
+	If localPath already exists and is a valid Git repo, it returns the Repo object.
+	If it exists but is not a repo or is empty, it attempts to clone into it.
+	Handles authentication for HTTPS via token in the URL.
+
+	Args:
+		repoUrlOrPath (str): The URL of the repository to clone (e.g., [https://github.com/user/repo.git](https://github.com/user/repo.git))
+		                     or the path to an existing local repository.
+		localPath (str): The local directory path where the repository should be cloned or exists.
+		authToken (Optional[str]): A GitHub Personal Access Token (PAT) for private repos (HTTPS).
+
+	Returns:
+		git.Repo: The Repo object representing the cloned or existing repository.
+
+	Raises:
+		GitHubError: If cloning fails due to invalid URL, authentication issues,
+		             network problems, Git command errors, or if localPath is invalid.
+	"""
+	logger.info(f"Attempting to clone/load repo '{repoUrlOrPath}' into '{localPath}'")
+
+	try:
+		# Case 1: Check if localPath is already a valid Git repository
+		if os.path.isdir(localPath) and os.path.exists(os.path.join(localPath, '.git')):
+			logger.info(f"'{localPath}' already exists and appears to be a Git repository. Loading existing repo.")
+			try:
+					repo: git.Repo = git.Repo(localPath)
+					# TODO: Optionally perform a 'git pull' here? Requires careful handling of conflicts.
+					# repo.remotes.origin.pull()
+					logger.info(f"Successfully loaded existing repository from '{localPath}'.")
+					return repo
+			except git.InvalidGitRepositoryError as e:
+					errMsg = f"Directory '{localPath}' exists but is not a valid Git repository: {e}"
+					logger.error(errMsg)
+					raise GitHubError(errMsg) from e
+			except Exception as e: # Catch other potential git.Repo errors
+					errMsg = f"Error loading existing repository from '{localPath}': {e}"
+					logger.error(errMsg, exc_info=True)
+					raise GitHubError(errMsg) from e
+
+		# Case 2: localPath does not exist or is an empty directory - proceed with cloning
+		# Ensure the parent directory exists
+		parentDir = os.path.dirname(localPath)
+		if parentDir and not os.path.exists(parentDir):
+				os.makedirs(parentDir, exist_ok=True)
+				logger.debug(f"Created parent directory: {parentDir}")
+
+		cloneUrl = repoUrlOrPath
+		# Modify URL for authentication if token is provided (HTTPS only)
+		# Assumes URL format like [https://github.com/user/repo.git](https://github.com/user/repo.git)
+		# TODO: Handle SSH URLs if necessary (might require key management)
+		if authToken and cloneUrl.startswith("https://"):
+				# Insert token: https://<token>@[github.com/user/repo.git](https://github.com/user/repo.git)
+				parts = cloneUrl.split("://")
+				if len(parts) == 2:
+						cloneUrl = f"{parts[0]}://{authToken}@{parts[1]}"
+						logger.debug("Using auth token for HTTPS clone.")
+				else:
+						logger.warning("Could not inject auth token into potentially malformed URL.")
+
+		logger.info(f"Cloning '{repoUrlOrPath}'...") # Log original URL for clarity
+		# TODO: Implement progress reporting using a custom Progress class for GitPython
+		#       This requires subclassing git.remote.RemoteProgress.
+		# progressIndicator = CloneProgress() # Your custom progress class instance
+		repo = git.Repo.clone_from(
+				url=cloneUrl,
+				to_path=localPath,
+				# progress=progressIndicator # Pass progress handler here
+		)
+		logger.info(f"Repository successfully cloned into '{localPath}'.")
+		return repo
+
+	except git.GitCommandError as e:
+		stderrOutput = e.stderr.strip() if e.stderr else "No stderr output."
+		# Check for common errors
+		if "Authentication failed" in stderrOutput:
+			errMsg = f"Authentication failed for '{repoUrlOrPath}'. Check your credentials/token or repository permissions."
+			logger.error(errMsg)
+			raise GitHubError(errMsg) from e
+		elif "repository not found" in stderrOutput or "does not exist" in stderrOutput:
+			errMsg = f"Repository '{repoUrlOrPath}' not found or access denied."
+			logger.error(errMsg)
+			raise GitHubError(errMsg) from e
+		elif "already exists and is not an empty directory" in stderrOutput:
+			errMsg = f"Target directory '{localPath}' already exists and is not empty or not a valid repo."
+			logger.error(errMsg)
+			raise GitHubError(errMsg) from e
+		else:
+			errMsg = f"Git command failed during clone: {e.command} - Status: {e.status}\nStderr: {stderrOutput}"
+			logger.error(errMsg, exc_info=True) # Include stack trace for generic errors
+			raise GitHubError(errMsg) from e
+	except Exception as e:
+		# Catch other potential errors (network issues, invalid paths etc.)
+		errMsg = f"An unexpected error occurred during clone/load: {e}"
+		logger.error(errMsg, exc_info=True)
+		raise GitHubError(errMsg) from e
+
+def listFiles(self: 'GitHubHandler', repoPath: str, excludeGitDir: bool = True) -> List[str]:
+	"""
+	Lists all files tracked by Git within the local repository, relative to the repo root.
+
+	Args:
+		repoPath (str): The path to the local Git repository.
+		excludeGitDir (bool): Whether to explicitly exclude files within the .git directory.
+
+	Returns:
+		List[str]: A list of relative file paths.
+
+	Raises:
+		GitHubError: If the path is not a valid Git repository or listing fails.
+	"""
+	logger.debug(f"Listing files in repository: {repoPath}")
+	try:
+		repo: git.Repo = git.Repo(repoPath)
+		gitCmd: git.Git = repo.git
+		# Use 'git ls-files' which lists tracked files efficiently
+		trackedFilesStr: str = gitCmd.ls_files()
+		fileList: List[str] = trackedFilesStr.splitlines() # Use List
+
+		if excludeGitDir:
+			# Although ls-files usually doesn't list .git contents, filter just in case
+			fileList = [f for f in fileList if not f.startswith('.git/')]
+
+		logger.info(f"Found {len(fileList)} tracked files in '{repoPath}'.")
+		# TODO: Add filtering options? (e.g., exclude binary files, specific extensions?)
+		return fileList
+	except git.InvalidGitRepositoryError:
+		errMsg = f"'{repoPath}' is not a valid Git repository."
+		logger.error(errMsg)
+		raise GitHubError(errMsg)
+	except git.GitCommandError as e:
+		errMsg = f"Git command 'ls-files' failed in '{repoPath}': {e.stderr}"
+		logger.error(errMsg, exc_info=True)
+		raise GitHubError(errMsg) from e
+	except Exception as e:
+		errMsg = f"An unexpected error occurred listing files in '{repoPath}': {e}"
+		logger.error(errMsg, exc_info=True)
+		raise GitHubError(errMsg) from e
+
+def readFileContent(self: 'GitHubHandler', repoPath: str, filePath: str) -> str:
+	"""
+	Reads the content of a specific file within the local repository.
+
+	Args:
+		repoPath (str): The path to the local Git repository.
+		filePath (str): The relative path of the file within the repository.
+
+	Returns:
+		str: The content of the file.
+
+	Raises:
+		GitHubError: If the repository is invalid, the file does not exist,
+		             or there's an error reading the file (e.g., encoding).
+	"""
+	logger.debug(f"Reading file content: {os.path.join(repoPath, filePath)}")
+	fullPath: str = os.path.join(repoPath, filePath)
+
+	# Basic check first to avoid unnecessary repo loading for simple non-existence
+	if not os.path.exists(fullPath) or not os.path.isfile(fullPath):
+		errMsg = f"File not found at path: '{fullPath}'"
+		logger.error(errMsg)
+		raise GitHubError(errMsg) # Or could raise FileNotFoundError? Stick to GitHubError for consistency.
+
+	try:
+		# Verify repo context (optional, but good practice)
+		repo: git.Repo = git.Repo(repoPath) # Raises InvalidGitRepositoryError if repoPath invalid
+
+		# Read the file content
+		# TODO: Handle potential large files? Read in chunks? For LLM context, full read is often needed.
+		with open(fullPath, 'r', encoding='utf-8', errors='ignore') as fileHandle:
+			content: str = fileHandle.read()
+		logger.debug(f"Successfully read content from '{filePath}'. Length: {len(content)}")
+		return content
+	except git.InvalidGitRepositoryError:
+		errMsg = f"'{repoPath}' is not a valid Git repository while trying to read '{filePath}'."
+		logger.error(errMsg)
+		raise GitHubError(errMsg)
+	except FileNotFoundError:
+		# This shouldn't be reached due to the initial check, but handle defensively
+		errMsg = f"File not found: '{fullPath}'"
+		logger.error(errMsg)
+		raise GitHubError(errMsg)
+	except UnicodeDecodeError as e:
+		errMsg = f"Could not decode file '{filePath}' using UTF-8. It might be binary or use a different encoding: {e}"
+		logger.error(errMsg)
+		# TODO: Decide how to handle binary files. Skip them? Return placeholder? Raise specific error?
+		raise GitHubError(errMsg) from e
+	except IOError as e:
+		errMsg = f"IO error reading file '{filePath}': {e}"
+		logger.error(errMsg, exc_info=True)
+		raise GitHubError(errMsg) from e
+	except Exception as e:
+		errMsg = f"An unexpected error occurred reading file '{filePath}': {e}"
+		logger.error(errMsg, exc_info=True)
+		raise GitHubError(errMsg) from e
+
+def updateRepo(
+	self: 'GitHubHandler',
+	repoPath: str,
+	commitMessage: str,
+	push: bool = True,
+	remoteName: str = 'origin',
+	branchName: str = 'main',
+	authToken: Optional[str] = None # Needed for push via HTTPS
+) -> str:
+	"""
+	Stages all changes, commits them, and optionally pushes to the remote repository.
+
+	Args:
+		repoPath (str): The path to the local Git repository.
+		commitMessage (str): The commit message.
+		push (bool): Whether to push the changes to the remote repository (default: True).
+		remoteName (str): The name of the remote to push to (default: 'origin').
+		branchName (str): The name of the branch to push (default: 'main').
+		authToken (Optional[str]): GitHub PAT for authentication if pushing via HTTPS.
+
+	Returns:
+		str: A success message indicating completion.
+
+	Raises:
+		GitHubError: If staging, committing, or pushing fails.
+	"""
+	logger.info(f"Starting update process for repository: {repoPath}")
+	try:
+		repo: git.Repo = git.Repo(repoPath)
+		gitCmd: git.Git = repo.git
+
+		# 1. Check for changes
+		if not repo.is_dirty(untracked_files=True):
+			logger.info("No changes detected in the repository. Nothing to commit or push.")
+			return "No changes detected."
+
+		# 2. Stage all changes (including untracked files)
+		logger.info("Staging changes...")
+		gitCmd.add(A=True) # Stage all changes (-A flag)
+		logger.debug("Changes staged successfully.")
+
+		# 3. Commit changes
+		logger.info(f"Committing changes with message: '{commitMessage}'")
+		repo.index.commit(commitMessage)
+		logger.info("Commit successful.")
+
+		# 4. Push changes (optional)
+		if push:
+			logger.info(f"Attempting to push changes to remote '{remoteName}' branch '{branchName}'...")
+			# TODO: Handle authentication more robustly if needed (e.g., credential helper)
+			# For HTTPS push with token, GitPython often requires the token in the remote URL
+			# Or relies on a configured credential helper. Let's assume helper or SSH for now,
+			# but add URL modification as a fallback if needed.
+
+			remote: git.Remote = repo.remote(name=remoteName)
+
+			# --- Authentication Handling (Example - Needs Refinement) ---
+			pushUrl = remote.url
+			if authToken and pushUrl.startswith("https://"):
+					parts = pushUrl.split("://")
+					if len(parts) == 2 and '@' not in parts[1]: # Avoid double-adding token
+							pushUrl = f"{parts[0]}://{authToken}@{parts[1]}"
+							logger.debug("Using auth token for HTTPS push.")
+							# Temporarily set the URL? Or rely on credential helper?
+							# Setting URL might be complex if user switches remotes often.
+							# For simplicity, we rely on external config (credential helper/SSH key)
+							# Or let GitPython/Git handle it if the URL already contains the token.
+							# If push fails with auth error, suggest setting up a helper or using SSH.
+					else:
+							logger.warning("Cannot inject auth token for push URL, relying on existing config.")
+
+			# TODO: Implement progress reporting for push if possible (harder with GitPython)
+			pushInfoList: List[git.PushInfo] = remote.push(refspec=f'{branchName}:{branchName}') # Use List
+
+			# Check push results
+			pushSucceeded = True
+			errorMessages: List[str] = [] # Use List
+			for pushInfo in pushInfoList:
+					if pushInfo.flags & (git.PushInfo.ERROR | git.PushInfo.REJECTED | git.PushInfo.REMOTE_REJECTED):
+							pushSucceeded = False
+							errMsg = f"Push failed for remote '{remoteName}': Flags={pushInfo.flags}, Summary: {pushInfo.summary}"
+							logger.error(errMsg)
+							errorMessages.append(errMsg)
+							# More detailed error checking based on flags
+							if pushInfo.flags & git.PushInfo.REJECTED:
+									errorMessages.append("  Reason: Push rejected (likely requires pulling first).")
+							if pushInfo.flags & git.PushInfo.REMOTE_REJECTED:
+									errorMessages.append("  Reason: Remote repository rejected the push (check permissions/hooks).")
+							if pushInfo.flags & git.PushInfo.ERROR:
+									errorMessages.append("  Reason: An unspecified error occurred during push.")
+
+			if not pushSucceeded:
+					raise GitHubError("Push operation failed. See details:\n" + "\n".join(errorMessages))
+
+			logger.info(f"Changes successfully pushed to '{remoteName}/{branchName}'.")
+			successMsg = f"Changes committed and pushed to '{remoteName}/{branchName}'."
+		else:
+			logger.info("Skipping push step as requested.")
+			successMsg = "Changes committed locally."
+
+		return successMsg
+
+	except git.InvalidGitRepositoryError:
+		errMsg = f"'{repoPath}' is not a valid Git repository."
+		logger.error(errMsg)
+		raise GitHubError(errMsg)
+	except git.GitCommandError as e:
+		stderrOutput = e.stderr.strip() if e.stderr else "No stderr output."
+		# More specific error checking for commit/push
+		if "nothing to commit" in stderrOutput and not repo.is_dirty(untracked_files=True):
+			# This might occur if staging happened but commit failed, then retried
+			logger.warning("Git reported 'nothing to commit', though changes were expected.")
+			return "No changes needed committing." # Or raise error?
+		elif "Authentication failed" in stderrOutput:
+			errMsg = f"Authentication failed during push to remote '{remoteName}'. Check credentials/token."
+			logger.error(errMsg)
+			raise GitHubError(errMsg) from e
+		# TODO: Add check for push rejection (needs pull first)
+		elif "Updates were rejected because the remote contains work that you do" in stderrOutput:
+			errMsg = f"Push rejected. Remote branch '{remoteName}/{branchName}' has changes not present locally. Please pull changes first."
+			logger.error(errMsg)
+			raise GitHubError(errMsg) from e
+		else:
+			errMsg = f"Git command failed during update: {e.command} - Status: {e.status}\nStderr: {stderrOutput}"
+			logger.error(errMsg, exc_info=True)
+			raise GitHubError(errMsg) from e
+	except Exception as e:
+		errMsg = f"An unexpected error occurred during repository update: {e}"
+		logger.error(errMsg, exc_info=True)
+		raise GitHubError(errMsg) from e
+
+# TODO: Add methods for 'git status', 'git pull', 'git diff' if needed for UI feedback.
+# TODO: Add method to check if a repo URL/path is valid before attempting clone?
+#       (Requires different approach - maybe HEAD request for URLs?)
+--- END: core/github_handler.py ---
+--- START: core/llm_interface.py ---
+core/llm_interface.py
+"""
+Handles interaction with the Large Language Model (LLM) API.
+Includes building prompts and querying the API (e.g., Google Gemini).
+"""
+import logging
+import google.generativeai as genai # Use google-generativeai library
+from typing import Dict # Use Dict from typing
+
+from .exceptions import LLMError, ConfigurationError
+
+logger: logging.Logger = logging.getLogger(name)
+
+class LLMInterface:
+"""
+Provides methods to build prompts and interact with an LLM API.
+"""
+def init(self: 'LLMInterface') -> None:
+"""Initialises the LLMInterface."""
+# TODO: Potentially accept configuration (e.g., default model, safety settings)
+logger.debug("LLMInterface initialised.")
+
+def buildPrompt(self: 'LLMInterface', instruction: str, fileContents: Dict[str, str]) -> str:
+	"""
+	Constructs a detailed prompt for the LLM, including user instructions
+	and the content of selected files, specifying the desired output format.
+
+	Args:
+		instruction (str): The user's specific instruction for code modification.
+		fileContents (Dict[str, str]): A dictionary mapping relative file paths
+		                             to their string content.
+
+	Returns:
+		str: The fully constructed prompt string ready to be sent to the LLM.
+
+	TODO: Make the requested output format (JSON/YAML/XML) configurable.
+	TODO: Add options to truncate very long file contents to manage token limits.
+	TODO: Consider adding line numbers to file content snippets in the prompt.
+	"""
+	logger.debug(f"Building LLM prompt. Instruction length: {len(instruction)}, Files: {len(fileContents)}")
+
+	promptLines: list[str] = [] # Use list type hint via import? Not necessary for local var
+
+	# --- User Instruction ---
+	promptLines.append("## User Instruction:")
+	promptLines.append(instruction)
+	promptLines.append("\n") # Add spacing
+
+	# --- File Context ---
+	if fileContents:
+		promptLines.append("## Code Context:")
+		promptLines.append("The user instruction applies to the following file(s):")
+		for filePath, content in fileContents.items():
+			promptLines.append(f"--- START FILE: {filePath} ---")
+			# TODO: Implement token counting/truncation if content is excessively long
+			promptLines.append(content)
+			promptLines.append(f"--- END FILE: {filePath} ---")
+			promptLines.append("") # Add spacing between files
+	else:
+		promptLines.append("## Code Context:")
+		promptLines.append("No specific file context was provided.")
+		promptLines.append("\n")
+
+	# --- Output Format Specification ---
+	# CRITICAL: Clearly define the expected output format for the LLM.
+	promptLines.append("## Required Output Format:")
+	promptLines.append("Based *only* on the user instruction and the provided file contexts, generate the necessary code modifications.")
+	promptLines.append("Provide the **complete, updated content** for **all modified or newly created files** as a single JSON object within a single markdown code block.")
+	promptLines.append("The JSON object MUST map the relative file path (as a string key) to the full updated file content (as a string value).")
+	promptLines.append("\nExample JSON structure:")
+	promptLines.append("```json")
+	promptLines.append("{")
+	promptLines.append("  \"path/to/updated_file1.py\": \"# Updated Python code\\nprint('Hello')\",")
+	promptLines.append("  \"path/to/new_file.txt\": \"This is a new file created by the LLM.\",")
+	promptLines.append("  \"another/path/service.yaml\": \"apiVersion: v1\\nkind: Service\\nmetadata:\\n  name: updated-service\\n...\"")
+	promptLines.append("}")
+	promptLines.append("```")
+	promptLines.append("\n**Important Rules:**")
+	promptLines.append("* Only include files that require modification or are newly created based *directly* on the instruction.")
+	promptLines.append("* If a file needs changes, include its *entire* final content in the JSON value, not just the changed lines.")
+	promptLines.append("* Ensure the JSON is perfectly valid and enclosed in **one** markdown code block (```json ... ```).")
+	promptLines.append("* If **no files** need modification or creation based on the instruction, return an empty JSON object: `{}` within the code block.")
+	promptLines.append("* Do NOT include explanations, apologies, or any other text outside the single JSON code block.")
+
+	fullPrompt: str = "\n".join(promptLines)
+	logger.debug(f"Generated prompt length: {len(fullPrompt)}")
+	# logger.debug(f"Generated Prompt:\n{fullPrompt[:500]}...") # Log beginning of prompt
+	return fullPrompt
+
+
+def queryLlmApi(
+	self: 'LLMInterface',
+	apiKey: str,
+	prompt: str,
+	modelName: str = "gemini-pro" # Or fetch from config
+) -> str:
+	"""
+	Sends the prompt to the specified LLM API (Google Gemini) and returns the response.
+
+	Args:
+		apiKey (str): The API key for the LLM service.
+		prompt (str): The fully constructed prompt to send.
+		modelName (str): The specific LLM model to use (e.g., "gemini-pro", "gemini-1.5-flash").
+
+	Returns:
+		str: The text response received from the LLM.
+
+	Raises:
+		ConfigurationError: If the API key is invalid or not configured.
+		LLMError: If there are issues communicating with the API (network, rate limits,
+		          content safety blocks, API errors, empty response).
+
+	TODO: Add configuration for safety settings, generation config (temperature, max_output_tokens).
+	TODO: Implement more robust retry logic for transient network errors or rate limits.
+	TODO: Handle potential multipart responses if the model generates very large content.
+	"""
+	logger.info(f"Querying LLM model '{modelName}'...")
+	if not apiKey:
+		errMsg = "LLM API key is missing. Cannot query API."
+		logger.error(errMsg)
+		# Raise ConfigurationError as it's a setup issue
+		raise ConfigurationError(errMsg)
+
+	try:
+		# Configure the Generative AI client
+		genai.configure(api_key=apiKey)
+
+		# TODO: Add GenerationConfig and SafetySettings based on ConfigManager values
+		generation_config = {
+			# "temperature": 0.7, # Example
+			# "max_output_tokens": 8192, # Example
+		}
+		safety_settings = [
+			# Examples - Adjust based on needs and Gemini documentation
+			# {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+			# {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+			# {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+			# {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+		]
+
+		# Select the model
+		# TODO: Add error handling if the modelName is invalid/unavailable
+		model = genai.GenerativeModel(
+				model_name=modelName,
+				# generation_config=generation_config,
+				# safety_settings=safety_settings
+		)
+
+		logger.debug(f"Sending prompt (length: {len(prompt)}) to model '{modelName}'...")
+		# Send the prompt
+		response = model.generate_content(prompt)
+
+		# --- Response Handling ---
+		# Check for safety blocks or other reasons for no content
+		if not response.parts:
+			# Check prompt feedback for safety issues
+			if response.prompt_feedback and response.prompt_feedback.block_reason:
+				blockReason = response.prompt_feedback.block_reason.name
+				errMsg = f"LLM query blocked due to safety settings. Reason: {blockReason}"
+				logger.error(errMsg)
+				# Check safety ratings for details
+				for rating in response.prompt_feedback.safety_ratings:
+					logger.error(f"  - Category: {rating.category.name}, Probability: {rating.probability.name}")
+				raise LLMError(errMsg + ". Adjust safety settings or prompt content if appropriate.")
+			else:
+				# No parts and no explicit block reason - might be an API issue or empty generation
+				errMsg = "LLM response was empty or incomplete. No content parts received and no block reason given."
+				logger.error(errMsg)
+				# Log candidate details if available
+				if response.candidates:
+					logger.error(f"Candidate Finish Reason: {response.candidates[0].finish_reason.name if response.candidates[0].finish_reason else 'N/A'}")
+					# Log safety ratings per candidate if available
+					for rating in response.candidates[0].safety_ratings:
+							logger.error(f"  - Candidate Safety: {rating.category.name}, Probability: {rating.probability.name}")
+				raise LLMError(errMsg)
+
+		# Extract the text content
+		# Assuming simple text response for now. Handle multipart/function calls later if needed.
+		llmOutput: str = response.text # response.parts[0].text should also work
+
+		if not llmOutput.strip():
+			# Handle cases where the response contains parts but the text is empty/whitespace
+			errMsg = "LLM returned an empty response."
+			logger.error(errMsg)
+			raise LLMError(errMsg)
+
+		logger.info(f"LLM query successful. Response length: {len(llmOutput)}")
+		# logger.debug(f"LLM Response Snippet:\n{llmOutput[:500]}...")
+		return llmOutput
+
+	except ConfigurationError as e: # Re-raise config errors
+		raise e
+	except LLMError as e: # Re-raise our specific LLM errors
+		raise e
+	except Exception as e:
+		# Catch potential API errors from the google-generativeai library or network issues
+		errorType = type(e).__name__
+		errMsg = f"An unexpected error occurred during LLM API query ({errorType}): {e}"
+		logger.error(errMsg, exc_info=True)
+		# Check for common API error types if possible (e.g., AuthenticationError, RateLimitError)
+		# The specific exception types might vary based on the library version.
+		# Example check (adapt based on actual exceptions raised by the library):
+		# if "API key not valid" in str(e):
+		#     raise ConfigurationError(f"Invalid Gemini API Key: {e}") from e
+		# if "rate limit" in str(e).lower():
+		#     raise LLMError(f"LLM API rate limit exceeded: {e}") from e
+
+		raise LLMError(errMsg) from e
+--- END: core/llm_interface.py ---
+--- START: core/file_processor.py ---
+core/file_processor.py
+"""
+Handles processing related to file content generated by the LLM.
+Includes extracting structured data (e.g., JSON) from the LLM response
+and writing updated file contents to the local disk.
+"""
+
+import logging
+import json
+import yaml # Required if YAML parsing is needed
+import os
+import re # For regex-based extraction
+from typing import Dict, Optional, List # Use Dict, Optional, List
+
+from .exceptions import ParsingError, FileProcessingError
+
+logger: logging.Logger = logging.getLogger(name)
+
+class FileProcessor:
+"""
+Provides methods for parsing LLM output and saving generated file content.
+"""
+def init(self: 'FileProcessor') -> None:
+"""Initialises the FileProcessor."""
+logger.debug("FileProcessor initialised.")
+# TODO: Accept configuration if needed (e.g., default output format)
+
+def extractCodeBlock(self: 'FileProcessor', llmResponse: str, language: str = 'json') -> Optional[str]:
+	"""
+	Extracts the content of the first fenced code block (e.g., ```json ... ```)
+	from the LLM's response string.
+
+	Args:
+		llmResponse (str): The raw response string from the LLM.
+		language (str): The language identifier of the code block (e.g., 'json', 'yaml', 'python').
+		                Defaults to 'json'. If empty string, matches any ``` block.
+
+	Returns:
+		Optional[str]: The extracted content within the code block, or None if no
+		               matching block is found.
+
+	TODO: Make the extraction more robust, handling potential variations in markdown formatting.
+	"""
+	logger.debug(f"Attempting to extract '{language}' code block...")
+
+	# Pattern explanation:
+	# ``` optionally followed by the language identifier (case-insensitive)
+	# \s*?       optional whitespace (non-greedy)
+	# \n         a newline
+	# (.*?)      capture group 1: the content (non-greedy)
+	# \n         a newline
+	# ```        closing fence
+	# re.DOTALL makes '.' match newlines, re.IGNORECASE for language identifier
+	pattern = rf"```{language}\s*?\n(.*?)\n```"
+	match = re.search(pattern, llmResponse, re.DOTALL | re.IGNORECASE)
+
+	if match:
+		extractedContent: str = match.group(1).strip()
+		logger.info(f"Successfully extracted '{language}' code block. Length: {len(extractedContent)}")
+		return extractedContent
+	else:
+		# Fallback: Try finding generic block if specific language not found
+		if language: # Only try generic if a specific language was requested and not found
+			logger.warning(f"No specific '```{language}' block found. Trying generic '```...```' block.")
+			pattern = r"```\s*?\n(.*?)\n```"
+			match = re.search(pattern, llmResponse, re.DOTALL)
+			if match:
+					extractedContent = match.group(1).strip()
+					logger.info(f"Successfully extracted generic code block. Length: {len(extractedContent)}")
+					# We assume this generic block IS the intended format (e.g., JSON)
+					return extractedContent
+
+		logger.warning(f"Could not find a fenced code block matching '```{language}' or generic '```'.")
+		return None
+
+def parseStructuredOutput(self: 'FileProcessor', structuredDataString: str, format: str = 'json') -> Dict[str, str]:
+	"""
+	Parses the extracted structured data string (e.g., JSON, YAML) into a dictionary.
+	Validates that the output is a dictionary mapping filenames (str) to content (str).
+
+	Args:
+		structuredDataString (str): The string content extracted from the code block.
+		format (str): The expected format ('json' or 'yaml'). Defaults to 'json'.
+
+	Returns:
+		Dict[str, str]: A dictionary where keys are relative file paths and values
+		                are the corresponding file contents.
+
+	Raises:
+		ParsingError: If the string is not valid for the specified format, or if
+		              the parsed structure is not Dict[str, str].
+		NotImplementedError: If an unsupported format is requested.
+	"""
+	logger.info(f"Parsing structured output as '{format}'. Length: {len(structuredDataString)}")
+	parsedData: Dict[str, str] = {} # Use Dict
+
+	try:
+		if format == 'json':
+			parsedData = json.loads(structuredDataString)
+		elif format == 'yaml':
+			# TODO: Ensure PyYAML is installed if using this
+			parsedData = yaml.safe_load(structuredDataString)
+		else:
+			raise NotImplementedError(f"Parsing for format '{format}' is not implemented.")
+
+		# --- Validation ---
+		if not isinstance(parsedData, dict):
+			errMsg = f"Parsed data is not a dictionary as expected. Found type: {type(parsedData).__name__}"
+			logger.error(errMsg)
+			raise ParsingError(errMsg)
+
+		# Check key/value types
+		for key, value in parsedData.items():
+			if not isinstance(key, str):
+				errMsg = f"Invalid structure: Dictionary key '{key}' is not a string (type: {type(key).__name__})."
+				logger.error(errMsg)
+				raise ParsingError(errMsg)
+			if not isinstance(value, str):
+				errMsg = f"Invalid structure: Value for key '{key}' is not a string (type: {type(value).__name__})."
+				logger.error(errMsg)
+				raise ParsingError(errMsg)
+			# TODO: Add validation for file paths? (e.g., check for invalid characters?)
+
+		logger.info(f"Successfully parsed '{format}' data. Found {len(parsedData)} file entries.")
+		return parsedData
+
+	except json.JSONDecodeError as e:
+		errMsg = f"Invalid JSON detected: {e}. Check the LLM response format."
+		logger.error(errMsg, exc_info=True)
+		raise ParsingError(errMsg) from e
+	except yaml.YAMLError as e:
+		errMsg = f"Invalid YAML detected: {e}. Check the LLM response format."
+		logger.error(errMsg, exc_info=True)
+		raise ParsingError(errMsg) from e
+	except NotImplementedError as e:
+		logger.error(str(e))
+		raise e # Re-raise NotImplementedError
+	except ParsingError as e: # Re-raise validation errors
+		raise e
+	except Exception as e: # Catch other unexpected errors
+		errMsg = f"An unexpected error occurred during parsing: {e}"
+		logger.error(errMsg, exc_info=True)
+		raise ParsingError(errMsg) from e
+
+def saveFilesToDisk(self: 'FileProcessor', outputDir: str, fileData: Dict[str, str]) -> List[str]:
+	"""
+	Saves the file contents from the parsed dictionary to the specified output directory.
+	Creates necessary subdirectories and overwrites existing files.
+
+	Args:
+		outputDir (str): The base directory (e.g., the cloned repo path) where files should be saved.
+		fileData (Dict[str, str]): The dictionary mapping relative file paths to their content.
+
+	Returns:
+		List[str]: A list of the relative paths of the files that were successfully saved.
+
+	Raises:
+		FileProcessingError: If there are errors creating directories or writing files
+		                     (e.g., permissions, disk space).
+	"""
+	logger.info(f"Saving {len(fileData)} files to base directory: {outputDir}")
+	savedFilesList: List[str] = [] # Use List
+
+	if not os.path.isdir(outputDir):
+		errMsg = f"Output directory '{outputDir}' does not exist or is not a directory."
+		logger.error(errMsg)
+		raise FileProcessingError(errMsg)
+
+	for relativePath, content in fileData.items():
+		# Clean/validate relative path? Prevent '..' etc.
+		# os.path.abspath protects against some '..' tricks if outputDir is absolute
+		# For safety, disallow '..' in relative paths explicitly
+		if ".." in relativePath.split(os.path.sep):
+				errMsg = f"Invalid relative path contains '..': '{relativePath}'. Skipping."
+				logger.error(errMsg)
+				# Decide whether to raise error or just skip
+				# raise FileProcessingError(errMsg)
+				continue # Skip this file
+
+		# Ensure path uses correct OS separator (though LLM likely uses '/')
+		# os.path.join handles this if outputDir is clean.
+		# If relativePath uses mixed separators, it might be an issue.
+		# Normalise the relative path separators first?
+		normalisedRelativePath = os.path.normpath(relativePath)
+		if normalisedRelativePath.startswith(".."): # Double check after normpath
+				errMsg = f"Invalid relative path resolves outside base directory: '{relativePath}'. Skipping."
+				logger.error(errMsg)
+				continue
+
+		fullPath: str = os.path.join(outputDir, normalisedRelativePath)
+		logger.debug(f"Preparing to save file: {fullPath}")
+
+		try:
+			# Create parent directories if they don't exist
+			fileDir: str = os.path.dirname(fullPath)
+			if fileDir and not os.path.exists(fileDir):
+				logger.debug(f"Creating directory: {fileDir}")
+				os.makedirs(fileDir, exist_ok=True)
+
+			# Write the file content (overwrite if exists)
+			with open(fullPath, 'w', encoding='utf-8') as fileHandle:
+				fileHandle.write(content)
+
+			savedFilesList.append(relativePath) # Log the original relative path
+			logger.debug(f"Successfully wrote file: {fullPath}")
+
+		except OSError as e:
+			errMsg = f"OS error writing file '{fullPath}': {e}"
+			logger.error(errMsg, exc_info=True)
+			# Decide whether to stop or continue with other files
+			raise FileProcessingError(errMsg) from e # Stop on first error for safety
+		except Exception as e:
+			errMsg = f"An unexpected error occurred saving file '{fullPath}': {e}"
+			logger.error(errMsg, exc_info=True)
+			raise FileProcessingError(errMsg) from e # Stop on first error
+
+	logger.info(f"Successfully saved {len(savedFilesList)} files.")
+	return savedFilesList
+
+# TODO: Add function to read multiple file contents given a list of paths and base dir?
+#       Could be useful for the LLMInterface prompt building step.
+--- END: core/file_processor.py ---
+--- START: gui/threads.py ---
+gui/threads.py
+"""
+Defines QThread workers for performing long-running tasks in the background,
+preventing the GUI from freezing. Emits signals to update the GUI.
+"""
+import logging
+from PySide6.QtCore import QThread, Signal, Slot
+from typing import Optional, List, Dict, Any
+
+Import core handlers and exceptions
+from core.github_handler import GitHubHandler
+from core.llm_interface import LLMInterface
+from core.file_processor import FileProcessor
+from core.exceptions import BaseApplicationError
+
+logger: logging.Logger = logging.getLogger(name)
+
+--- Base Worker ---
+class BaseWorker(QThread):
+"""Base class for worker threads providing common signals."""
+# Signal Arguments:
+# finished: Dict/List/str (result data), str/None (error message)
+finished = Signal(object, str) # More specific types in subclasses are better
+progress = Signal(int, int) # current value, total value (or 0,0 for indeterminate)
+statusUpdate = Signal(str) # Simple status message updates
+
+def __init__(self: 'BaseWorker', parent: Optional[Any] = None) -> None:
+	super().__init__(parent)
+	# You can add common initialization here if needed
+
+# TODO: Add generic error handling wrapper?
+--- GitHub Worker ---
+class GitHubWorker(BaseWorker):
+"""Worker thread for Git/GitHub operations."""
+# Define more specific finished signals for each task type
+cloneFinished = Signal(list, str)      # list of files, error message
+listFilesFinished = Signal(list, str) # list of files, error message
+readFileFinished = Signal(str, str)    # file content, error message
+commitPushFinished = Signal(str, str)  # success message, error message
+errorOccurred = Signal(str)            # General error signal
+
+_task: Optional[str] = None
+_args: list = [] # Use list
+_kwargs: dict = {} # Use dict
+
+def __init__(self: 'GitHubWorker', parent: Optional[Any] = None) -> None:
+	super().__init__(parent)
+	self._handler = GitHubHandler() # Instantiate the handler
+	self._task = None
+	self._args = []
+	self._kwargs = {}
+
+
+# --- Task initiation methods ---
+@Slot(str, str, str)
+def startClone(self: 'GitHubWorker', repoUrlOrPath: str, localPath: str, authToken: Optional[str]) -> None:
+	self._task = 'clone'
+	self._args = [repoUrlOrPath, localPath]
+	self._kwargs = {'authToken': authToken}
+	self.start() # Starts the run() method
+
+@Slot(str)
+def startListFiles(self: 'GitHubWorker', repoPath: str) -> None:
+	# TODO: Implement if needed separately from clone
+	self._task = 'listFiles'
+	self._args = [repoPath]
+	self._kwargs = {}
+	self.start()
+
+@Slot(str, str)
+def startReadFile(self: 'GitHubWorker', repoPath: str, filePath: str) -> None:
+	# TODO: Implement if needed for prompt building in thread
+	self._task = 'readFile'
+	self._args = [repoPath, filePath]
+	self._kwargs = {}
+	self.start()
+
+@Slot(str, str, str, str, str)
+def startCommitPush(self: 'GitHubWorker', repoPath: str, commitMessage: str, remoteName: str, branchName: str, authToken: Optional[str]) -> None:
+	self._task = 'commitPush'
+	self._args = [repoPath, commitMessage]
+	self._kwargs = {'push': True, 'remoteName': remoteName, 'branchName': branchName, 'authToken': authToken}
+	self.start()
+
+# --- Main thread execution ---
+def run(self: 'GitHubWorker') -> None:
+	"""The main execution method for the thread."""
+	if not self._task:
+		logger.warning("GitHubWorker started without a task.")
+		return
+
+	try:
+		if self._task == 'clone':
+			self.statusUpdate.emit(f"Cloning/Loading {self._args[0]}...")
+			# TODO: Connect progress signals from GitHubHandler if implemented
+			repo = self._handler.cloneRepository(*self._args, **self._kwargs)
+			self.statusUpdate.emit(f"Listing files in {repo.working_dir}...")
+			fileList = self._handler.listFiles(repo.working_dir)
+			self.cloneFinished.emit(fileList, None) # Success
+
+		elif self._task == 'listFiles':
+			self.statusUpdate.emit(f"Listing files in {self._args[0]}...")
+			fileList = self._handler.listFiles(*self._args, **self._kwargs)
+			self.listFilesFinished.emit(fileList, None)
+
+		elif self._task == 'readFile':
+			self.statusUpdate.emit(f"Reading file {self._args[1]}...")
+			content = self._handler.readFileContent(*self._args, **self._kwargs)
+			self.readFileFinished.emit(content, None)
+
+		elif self._task == 'commitPush':
+			self.statusUpdate.emit("Staging, committing, and pushing...")
+			message = self._handler.updateRepo(*self._args, **self._kwargs)
+			self.commitPushFinished.emit(message, None) # Success
+
+		else:
+			errMsg = f"Unknown GitHubWorker task: {self._task}"
+			logger.error(errMsg)
+			self.errorOccurred.emit(errMsg) # Use general error signal
+
+	except BaseApplicationError as e:
+		logger.error(f"Error during GitHub task '{self._task}': {e}", exc_info=False) # Log concise error
+		# Emit specific finished signal with error
+		if self._task == 'clone': self.cloneFinished.emit(None, str(e))
+		elif self._task == 'listFiles': self.listFilesFinished.emit(None, str(e))
+		elif self._task == 'readFile': self.readFileFinished.emit(None, str(e))
+		elif self._task == 'commitPush': self.commitPushFinished.emit(None, str(e))
+		else: self.errorOccurred.emit(str(e)) # Fallback general error
+
+	except Exception as e:
+		# Catch unexpected errors
+		logger.critical(f"Unexpected critical error in GitHubWorker task '{self._task}': {e}", exc_info=True)
+		errMsg = f"An unexpected error occurred: {e}"
+		if self._task == 'clone': self.cloneFinished.emit(None, errMsg)
+		elif self._task == 'listFiles': self.listFilesFinished.emit(None, errMsg)
+		elif self._task == 'readFile': self.readFileFinished.emit(None, errMsg)
+		elif self._task == 'commitPush': self.commitPushFinished.emit(None, errMsg)
+		else: self.errorOccurred.emit(errMsg)
+	finally:
+		self._task = None # Reset task after execution
+--- LLM Worker ---
+class LLMWorker(BaseWorker):
+"""Worker thread for LLM interactions."""
+llmQueryFinished = Signal(str, str) # LLM response string, error message
+errorOccurred = Signal(str)
+
+_task: Optional[str] = None
+_args: list = []
+_kwargs: dict = {}
+
+def __init__(self: 'LLMWorker', parent: Optional[Any] = None) -> None:
+	super().__init__(parent)
+	self._handler = LLMInterface()
+	self._task = None
+	self._args = []
+	self._kwargs = {}
+
+@Slot(str, str, str, dict)
+def startQuery(self: 'LLMWorker', apiKey: str, modelName: str, instruction: str, fileContents: Dict[str, str]) -> None:
+	self._task = 'query'
+	# Build prompt happens synchronously before starting thread usually,
+	# but could be done here too. Let's assume prompt is built outside for now.
+	prompt = self._handler.buildPrompt(instruction, fileContents)
+	self._args = [apiKey, prompt]
+	self._kwargs = {'modelName': modelName}
+	self.start()
+
+def run(self: 'LLMWorker') -> None:
+	if not self._task: return
+	try:
+		if self._task == 'query':
+			self.statusUpdate.emit(f"Querying LLM model {self._kwargs.get('modelName')}...")
+			response = self._handler.queryLlmApi(*self._args, **self._kwargs)
+			self.llmQueryFinished.emit(response, None) # Success
+		else:
+			errMsg = f"Unknown LLMWorker task: {self._task}"
+			logger.error(errMsg)
+			self.errorOccurred.emit(errMsg)
+
+	except BaseApplicationError as e:
+		logger.error(f"Error during LLM task '{self._task}': {e}", exc_info=False)
+		if self._task == 'query': self.llmQueryFinished.emit(None, str(e))
+		else: self.errorOccurred.emit(str(e))
+	except Exception as e:
+		logger.critical(f"Unexpected critical error in LLMWorker task '{self._task}': {e}", exc_info=True)
+		errMsg = f"An unexpected error occurred: {e}"
+		if self._task == 'query': self.llmQueryFinished.emit(None, errMsg)
+		else: self.errorOccurred.emit(errMsg)
+	finally:
+		self._task = None
+--- File Processing Worker ---
+class FileWorker(BaseWorker):
+"""Worker thread for parsing responses and saving files."""
+parsingFinished = Signal(dict, str) # Parsed data dict, error message
+savingFinished = Signal(list, str)  # List of saved files, error message
+errorOccurred = Signal(str)
+
+_task: Optional[str] = None
+_args: list = []
+_kwargs: dict = {}
+
+def __init__(self: 'FileWorker', parent: Optional[Any] = None) -> None:
+	super().__init__(parent)
+	self._handler = FileProcessor()
+	self._task = None
+	self._args = []
+	self._kwargs = {}
+
+@Slot(str, str)
+def startParsing(self: 'FileWorker', llmResponse: str, expectedFormat: str = 'json') -> None:
+	self._task = 'parse'
+	# Extract code block happens synchronously before starting thread usually,
+	# but could be done here. Assume extracted block is passed.
+	codeBlock = self._handler.extractCodeBlock(llmResponse, expectedFormat)
+	if codeBlock is None:
+		# Handle error immediately if block extraction fails? Or let run() handle?
+		# Let run handle it for consistency.
+		self._args = [None] # Pass None to indicate extraction failed
+	else:
+		self._args = [codeBlock]
+	self._kwargs = {'format': expectedFormat}
+	self.start()
+
+@Slot(str, dict)
+def startSaving(self: 'FileWorker', outputDir: str, fileData: Dict[str, str]) -> None:
+	self._task = 'save'
+	self._args = [outputDir, fileData]
+	self._kwargs = {}
+	self.start()
+
+def run(self: 'FileWorker') -> None:
+	if not self._task: return
+	try:
+		if self._task == 'parse':
+			codeBlockContent = self._args[0]
+			if codeBlockContent is None:
+				raise ParsingError("Could not find or extract code block from LLM response.")
+
+			self.statusUpdate.emit(f"Parsing {self._kwargs.get('format')} data...")
+			parsedData = self._handler.parseStructuredOutput(codeBlockContent, **self._kwargs)
+			self.parsingFinished.emit(parsedData, None) # Success
+
+		elif self._task == 'save':
+			self.statusUpdate.emit(f"Saving files to {self._args[0]}...")
+			savedFiles = self._handler.saveFilesToDisk(*self._args, **self._kwargs)
+			self.savingFinished.emit(savedFiles, None) # Success
+		else:
+			errMsg = f"Unknown FileWorker task: {self._task}"
+			logger.error(errMsg)
+			self.errorOccurred.emit(errMsg)
+
+	except BaseApplicationError as e:
+		logger.error(f"Error during File task '{self._task}': {e}", exc_info=False)
+		if self._task == 'parse': self.parsingFinished.emit(None, str(e))
+		elif self._task == 'save': self.savingFinished.emit(None, str(e))
+		else: self.errorOccurred.emit(str(e))
+	except Exception as e:
+		logger.critical(f"Unexpected critical error in FileWorker task '{self._task}': {e}", exc_info=True)
+		errMsg = f"An unexpected error occurred: {e}"
+		if self._task == 'parse': self.parsingFinished.emit(None, errMsg)
+		elif self._task == 'save': self.savingFinished.emit(None, errMsg)
+		else: self.errorOccurred.emit(errMsg)
+	finally:
+		self._task = None
+TODO: Add init.py files to gui/ and core/ directories if not already present.
+--- END: gui/threads.py ---
+TODO: Create empty init.py in llm_code_updater/gui/widgets/
+TODO: Create empty init.py in llm_code_updater/tests/
+TODO: Create empty init.py in llm_code_updater/resources/ (if using)
+TODO: Create empty init.py in llm_code_updater/docs/ (if using)
+==============================================================================
+== End of Consolidated Code ==
+==============================================================================
+
+---
+
+**Summary of Necessary Coding Steps:**
+
+Based on the foundational code and placeholders provided above, here is a detailed breakdown of the subsequent development steps:
+
+1.  **Project Setup & Verification:**
+    * Create the full directory structure (`gui/widgets`, `tests`, `resources`, `docs`, `logs`) as outlined previously.
+    * Create empty `__init__.py` files in all Python package directories (`gui`, `gui/widgets`, `core`, `utils`, `tests`).
+    * Save the consolidated code block above into the respective files (e.g., copy the `requirements.txt` section into `llm_code_updater/requirements.txt`).
+    * Create a virtual environment (`python -m venv venv`).
+    * Activate the virtual environment (`source venv/bin/activate` or `venv\Scripts\activate`).
+    * Install dependencies (`pip install -r requirements.txt`).
+    * Create your `.env` file from `.env.example` and add your `GEMINI_API_KEY` (and `GITHUB_TOKEN` if needed).
+    * Run `python main.py` to ensure the application starts, initialises logging/config without critical errors, and potentially shows a basic (currently unimplemented) window before exiting. Check the `logs/app_log.log` file.
+
+2.  **GUI Implementation (`gui/main_window.py`):**
+    * **Refine `_setupUI`:** Store references to interactive widgets (buttons, inputs, lists, text areas) as class members (e.g., `self._cloneButton = QPushButton(...)`). Set `objectName` for widgets if needed for styling or later lookup (less common with member references).
+    * **Implement `_connectSignals`:** Connect signals from the member widgets (e.g., `self._cloneButton.clicked.connect(...)`) to the corresponding `_handle...` slots.
+    * **Implement `_updateWidgetStates`:** Create a method to enable/disable widgets based on the application's state (e.g., disable "Send to LLM" until repo is loaded and files are selected; disable all actions while a worker thread is busy). Call this method at the end of `_setupUI` and in `_resetTaskState` and before starting tasks.
+    * **GUI Log Handler:** Implement a custom `logging.Handler` (likely in `gui/gui_utils.py`) that emits a Qt signal (`Signal(str)`). Connect this signal in `MainWindow` to the `_appendLogMessage` slot. Modify `utils/logger_setup.py` to optionally accept and add this handler.
+    * **File List Population:** In the `_onCloneFinished` slot, populate the `self._fileListWidget` with the received file list. Consider using a `QTreeView` for better directory structure representation (requires more complex data model).
+    * **Worker Thread Instantiation:** In `MainWindow.__init__`, instantiate the worker threads (`GitHubWorker`, `LLMWorker`, `FileWorker`).
+    * **Worker Signal Connections:** In `_connectSignals`, connect the various signals from each worker thread instance (`cloneFinished`, `llmQueryFinished`, `parsingFinished`, `savingFinished`, `commitPushFinished`, `statusUpdate`, `progress`, `errorOccurred`) to the appropriate handler slots in `MainWindow` (e.g., `_onCloneFinished`, `_onLlmFinished`, `_updateStatusBar`, `_updateProgressBar`, `_handleWorkerError`).
+    * **Implement Placeholders in Handlers:** Fill in the `TODO` sections within the `_handle...` methods to correctly gather necessary data (URLs, paths, tokens, messages) and call the appropriate `start...` method on the corresponding worker thread instance (e.g., `self._githubWorker.startClone(...)`).
+
+3.  **Core Logic Implementation (`core/` modules):**
+    * **`GitHubHandler`:**
+        * Implement progress reporting for `clone_from` by subclassing `git.remote.RemoteProgress` and emitting signals (requires passing the progress instance to `clone_from`). Connect these signals through the `GitHubWorker`.
+        * Add methods for `git status` or `is_dirty` checks if needed for GUI feedback before commit/push.
+        * Refine authentication handling for push (consider credential helpers vs. token injection).
+        * Add filtering options to `listFiles` (e.g., by extension, ignore patterns).
+    * **`LLMInterface`:**
+        * Implement configuration loading for safety settings and generation parameters (temperature, max tokens).
+        * Add robust token counting and content truncation logic in `buildPrompt`.
+        * Implement retry logic for transient API errors in `queryLlmApi`.
+        * Handle potential multipart responses or function calling if supported/needed by the chosen model or use case.
+        * Add error handling for invalid model names.
+    * **`FileProcessor`:**
+        * Make `extractCodeBlock` more robust to variations in markdown (e.g., optional language identifier, different spacing).
+        * Implement YAML parsing fully (ensure PyYAML is installed). Add support for other formats (XML) if required.
+        * Add validation for file path safety (preventing writing outside `outputDir`) in `saveFilesToDisk`.
+        * Consider adding a method `readFilesFromDisk` to complement `saveFilesToDisk`, potentially useful for gathering context before calling the LLM.
+
+4.  **Threading Implementation (`gui/threads.py`):**
+    * Refine the signals in `BaseWorker` and specific workers for clarity if needed.
+    * Implement progress reporting propagation from handlers (like `GitHubHandler`) through the worker threads using the `progress` signal.
+    * Ensure robust error capturing within the `run` methods and emit appropriate error signals.
+
+5.  **Testing (`tests/`):**
+    * Implement unit tests for `ConfigManager`, `LLMInterface` (mocking `genai`), `FileProcessor`.
+    * Implement unit tests for `GitHubHandler` by mocking `git.Repo` and `git.Git` calls extensively (using `unittest.mock`). This is crucial as Git operations are external dependencies.
+    * Implement integration tests where feasible (e.g., testing the flow from `main.py` through config loading). GUI testing is complex but could use frameworks like `pytest-qt`.
+
+6.  **Documentation (`docs/`, README.md, Docstrings):**
+    * Expand `README.md` with detailed setup, usage instructions, and troubleshooting tips.
+    * Generate formal documentation using Sphinx in the `docs/` directory, pulling from docstrings.
+    * Review and enhance all docstrings and inline comments for clarity and completeness.
+
+7.  **Refinement and Packaging (Optional):**
+    * Refine the GUI layout and user experience based on testing.
+    * Add features like theme selection, persistent window geometry, etc.
+    * Consider packaging the application using tools like PyInstaller or cx_Freeze for easier distribution.
+
+This detailed list provides a clear roadmap
