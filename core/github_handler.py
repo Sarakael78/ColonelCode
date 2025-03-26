@@ -13,7 +13,7 @@ from typing import List, Optional # Use List from typing
 
 from .exceptions import GitHubError
 
-logger: logging.Logger = logging.getLogger(name)
+logger: logging.Logger = logging.getLogger(__name__)
 
 class GitHubHandler:
 	"""

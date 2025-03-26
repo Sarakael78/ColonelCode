@@ -4,18 +4,18 @@
 Defines the main application window, its layout, widgets, and connections.
 Orchestrates user interactions and delegates tasks to core logic via threads.
 """
+import os
 import logging
 from PySide6.QtWidgets import (
 	QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-	QPushButton, QTextEdit, QListWidget, QProgressBar, QStatusBar, QFileDialog,
+	QPushButton, QTextEdit, QListWidget, QProgressBar, QStatusBar,
 	QMessageBox, QSplitter # Consider using QSplitter for layout
 )
-from PySide6.QtCore import Qt, Slot, Signal # Import necessary Qt core components
-from PySide6.QtGui import QAction # For menu items
+from PySide6.QtCore import Qt, Slot # Import necessary Qt core components
 
 # Assuming ConfigManager and exception types are needed here
 from core.config_manager import ConfigManager
-from core.exceptions import BaseApplicationError
+from core.exceptions import ParsingError
 
 # TODO: Import worker threads from gui.threads
 # TODO: Import core logic handlers (GitHub, LLM, FileProcessor)
@@ -327,15 +327,15 @@ class MainWindow(QMainWindow):
 		self._showInfo("Send to LLM", f"# TODO: Implement LLM query using LLMInterface in a thread. Files: {len(fileContents)}")
 		# Simulate response for now
 		dummyResponse = """
-```json
-{
-  "file1.py": "print('Hello, updated world!')",
-  "subdir/file2.js": "// Updated JavaScript file\\nconsole.log('Updated!');",
-  "new_feature.py": "# A newly created file by the LLM\\ndef new_function():\\n    pass"
-}
-"""
-self._onLlmFinished(dummyResponse, None)
-# --- End Placeholder ---
+		```json
+		{
+		"file1.py": "print('Hello, updated world!')",
+		"subdir/file2.js": "// Updated JavaScript file\\nconsole.log('Updated!');",
+		"new_feature.py": "# A newly created file by the LLM\\ndef new_function():\\n    pass"
+		}
+		"""
+		self._onLlmFinished(dummyResponse, None)
+		# --- End Placeholder ---
 
 @Slot()
 def _handleParseResponse(self: 'MainWindow') -> None:

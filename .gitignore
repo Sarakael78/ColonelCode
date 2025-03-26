@@ -1,4 +1,4 @@
- #--- START: .gitignore ---
+# --- START: .gitignore ---
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -137,5 +137,5 @@ secrets.yaml
 logs/
 
 # Specific project outputs
-cloned_repos/ Exclude the default clone directory
+cloned_repos/ 
 # --- END: .gitignore ---

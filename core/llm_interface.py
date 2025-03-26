@@ -10,7 +10,7 @@ from typing import Dict # Use Dict from typing
 
 from .exceptions import LLMError, ConfigurationError
 
-logger: logging.Logger = logging.getLogger(name)
+logger: logging.Logger = logging.getLogger(__name__)
 
 class LLMInterface:
 	"""

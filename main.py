@@ -9,7 +9,7 @@ import logging
 import os # For path manipulation if needed
 from PySide6.QtWidgets import QApplication, QMessageBox # Import QMessageBox for error display
 from core.config_manager import ConfigManager
-from core.exceptions import ConfigurationError, BaseApplicationError
+from core.exceptions import ConfigurationError
 from gui.main_window import MainWindow # Assuming MainWindow is implemented here
 from utils.logger_setup import setupLogging
 

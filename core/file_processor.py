@@ -17,7 +17,7 @@ from typing import Dict, Optional, List # Use Dict, Optional, List
 
 from .exceptions import ParsingError, FileProcessingError
 
-logger: logging.Logger = logging.getLogger(name)
+logger: logging.Logger = logging.getLogger(__name__)
 
 class FileProcessor:
     """
