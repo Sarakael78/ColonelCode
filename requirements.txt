@@ -15,3 +15,6 @@ PyYAML
 
 # Python code syntax checking (for validation)
 pyflakes
+
+# Parsing .gitignore files
+gitignore_parser

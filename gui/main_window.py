@@ -61,27 +61,27 @@ CORRECTION_RETRY_TEMPERATURE = 0.4  # Lower temperature for correction attempts
 class MainWindow(QMainWindow):
     """
     Main application window implementing the primary user interface.
-    
+
     Coordinates all user interactions, background tasks, and visual updates.
     Manages multiple worker threads for long-running operations.
-    
+
     Signals:
         signalLogMessage (str): Emitted to update the log display
     """
-    
+
     signalLogMessage = Signal(str)
 
     def __init__(self: 'MainWindow', configManager: ConfigManager, parent: Optional[QWidget] = None) -> None:
         """
         Initialize the main window.
-        
+
         Args:
             configManager: Configuration manager instance
             parent: Optional parent widget
         """
         super().__init__(parent)
         self._configManager = configManager
-        
+
         # Initialize state variables
         self._selectedFiles = [] # List of relative paths
         self._originalFileContents = {} # Cache of original file contents {rel_path: content}
@@ -92,24 +92,24 @@ class MainWindow(QMainWindow):
         self._repoIsDirty = False
         self._is_syncing_scroll = False
         self._correction_attempted = False
-        
+
         # Initialize core handlers
         self._githubHandlerInstance = GitHubHandler()
         self._llmInterfaceInstance = LLMInterface(configManager=self._configManager)
-        
+
         logger.info("Initializing MainWindow...")
         self._setupUI()
         self._loadInitialSettings()
-        
+
         # Initialize workers
         self._githubWorker = GitHubWorker(parent=self)
         self._llmWorker = LLMWorker(parent=self, configManager=self._configManager)
         self._fileWorker = FileWorker(parent=self)
-        
+
         self._connectSignals()
         self._updateWidgetStates()
         self._setupGuiLogging()
-        
+
         logger.info("MainWindow initialized.")
 
     # --- UI Setup (MODIFIED) ---
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         iconPath = os.path.join('resources', 'app_icon.png')
         if os.path.exists(iconPath): self.setWindowIcon(QIcon(iconPath))
         else: logger.warning(f"Application icon not found at: {iconPath}")
-        
+
         self._centralWidget = QWidget()
         self.setCentralWidget(self._centralWidget)
         self._mainLayout = QVBoxLayout(self._centralWidget)
@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
 
         # --- Middle: File List and Prompt/LLM Interaction ---
         middleSplitter = QSplitter(Qt.Orientation.Horizontal)
-        
+
         # Middle Left: File List
         fileListLayout = QVBoxLayout()
         fileListLabel = QLabel("Select Files for Context:")
@@ -283,20 +283,20 @@ class MainWindow(QMainWindow):
             logger.error(f"Unexpected error loading initial settings: {e}", exc_info=True)
 
     def _saveLastRepoPath(self: 'MainWindow', repoPath: str) -> None:
-        try: 
+        try:
             logger.debug(f"Attempting to save last repo path: {repoPath}")
             self._configManager.setConfigValue('General', 'LastRepoPath', repoPath)
             logger.info(f"Saved last repository path to config: {repoPath}")
-        except ConfigurationError as e: 
+        except ConfigurationError as e:
             logger.error(f"Failed to save LastRepoPath to config: {e}")
-        except Exception as e: 
+        except Exception as e:
             logger.error(f"Unexpected error saving last repo path: {e}", exc_info=True)
 
     # --- Signal Connections (unchanged) ---
     def _connectSignals(self: 'MainWindow') -> None:
         logger.debug("Connecting signals to slots.")
         self._browseButton.clicked.connect(self._handleBrowseRepo); self._cloneButton.clicked.connect(self._handleCloneRepo)
-        
+
         # Connect itemSelectionChanged for multi-selection state update
         # Connect currentItemChanged for updating diff view based on focus
         self._fileListWidget.itemSelectionChanged.connect(self._handleSelectionChange)
@@ -342,7 +342,7 @@ class MainWindow(QMainWindow):
         if self._isBusy:
             self._showWarning("Busy", "Another task is currently running. Please wait.")
             return
-            
+
         # Get and validate repo URL/path
         repoUrlOrPath = self._repoUrlInput.text().strip()
         if not repoUrlOrPath:
@@ -373,7 +373,7 @@ class MainWindow(QMainWindow):
         self._updateWidgetStates()
         self._updateStatusBar("Loading/Cloning repository...")
         self._updateProgress(-1, "Starting clone/load...")
-        
+
         # Clear previous state
         self._clonedRepoPath = None
         self._fileListWidget.clear()
@@ -385,7 +385,7 @@ class MainWindow(QMainWindow):
         self._proposedCodeArea.clear()
         self._llmResponseArea.clear()
         self._promptInput.clear()
-        
+
         # Start clone worker
         self._githubWorker.startClone(repoUrlOrPath, cloneTargetFullPath, None)
 
@@ -406,20 +406,20 @@ class MainWindow(QMainWindow):
         logger.debug(f"Current item changed. New focus: {current.text() if current else 'None'}")
         self._displaySelectedFileDiff(current, previous)
 
-    # --- Diff display logic (uses focused item) (unchanged) ---
+    # --- Diff display logic (uses focused item) (MODIFIED placeholders) ---
     @Slot(QListWidgetItem, QListWidgetItem)
     def _displaySelectedFileDiff(self: 'MainWindow', current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]) -> None:
         """Displays the diff for the currently focused file item."""
         _ = previous; # Not used
         if self._isBusy: return;
         self._originalCodeArea.clear(); self._proposedCodeArea.clear();
-        
+
         if not current:
             self._updateStatusBar("Select a file to view diff.", 3000)
             self._syncScrollbars(); return
-            
+
         filePath = current.text()
-        
+
         # Ensure original content is loaded if missing (e.g., after parse)
         if filePath not in self._originalFileContents and self._clonedRepoPath:
             full_path = os.path.join(self._clonedRepoPath, filePath)
@@ -475,14 +475,14 @@ class MainWindow(QMainWindow):
                  status_msg += " - (Error: Content unavailable)"
         elif original_content is not None:
             # No parsed data YET, show original vs placeholder
-            proposed_content = "(Awaiting Parse/Validation)"
-            status_msg += " - Original (Awaiting Parse)"
+            proposed_content = "<No proposed changes yet. Send to LLM and Parse response.>" # More explicit placeholder
+            status_msg += " - Original (Awaiting LLM Response & Parse)" # Update status too
             validation_info = ""
         else:
             # No original content loaded (e.g., before clone or file doesn't exist)
             original_content = "(Content not loaded or file is new)"
-            proposed_content = "(Awaiting Parse/Validation)"
-            status_msg += " - (Awaiting Context)"
+            proposed_content = "<No proposed changes yet. Send to LLM and Parse response.>" # Use same explicit placeholder
+            status_msg += " - (Awaiting Context / LLM Response & Parse)"
             validation_info = ""
 
         # Generate and display HTML diff
@@ -491,28 +491,41 @@ class MainWindow(QMainWindow):
             (proposed_content or "").splitlines(),
             is_new_file
         )
-        
+
         # Block signals during HTML set to prevent recursive scroll sync
         orig_sb = self._originalCodeArea.verticalScrollBar()
         prop_sb = self._proposedCodeArea.verticalScrollBar()
         orig_sb.blockSignals(True)
         prop_sb.blockSignals(True)
-        
+
         self._originalCodeArea.setHtml(original_html)
         self._proposedCodeArea.setHtml(proposed_html)
-        
+
         orig_sb.blockSignals(False)
         prop_sb.blockSignals(False)
-        
+
         self._updateStatusBar(status_msg + validation_info, 10000)
         self._syncScrollbars() # Sync scrollbars after content is set
 
     def _generate_diff_html(self: 'MainWindow', original_lines: List[str], proposed_lines: List[str], is_new_file: bool) -> Tuple[str, str]: # Unchanged
-        html_style = (f"<style>body{{margin:0;padding:0;font-family:{HTML_FONT_FAMILY};font-size:{HTML_FONT_SIZE};color:{HTML_COLOR_TEXT};background-color:#fff;}}" f".line{{display:flex;white-space:pre;min-height:1.2em;border-bottom:1px solid #eee;}}" f".line-num{{flex:0 0 40px;text-align:right;padding-right:10px;color:{HTML_COLOR_LINE_NUM};background-color:#f1f1f1;user-select:none;border-right:1px solid #ddd;}}" f".line-content{{flex-grow:1;padding-left:10px;}}" f".equal{{background-color:#fff;}}.delete{{background-color:{HTML_COLOR_DELETED_BG};}}" f".insert{{background-color:{HTML_COLOR_ADDED_BG};}}" f".placeholder{{background-color:{HTML_COLOR_PLACEHOLDER_BG};color:#aaa;font-style:italic;}}" f".new-file-placeholder{{background-color:{HTML_COLOR_DELETED_BG};color:#aaa;font-style:italic;text-align:center;}}" f"</style>")
+        html_style = (f"<style>body{{margin:0;padding:0;font-family:{HTML_FONT_FAMILY};font-size:{HTML_FONT_SIZE};color:{HTML_COLOR_TEXT};background-color:#fff;}}"
+                      f".line{{display:flex;white-space:pre;min-height:1.2em;border-bottom:1px solid #eee;}}"
+                      f".line-num{{flex:0 0 40px;text-align:right;padding-right:10px;color:{HTML_COLOR_LINE_NUM};background-color:#f1f1f1;user-select:none;border-right:1px solid #ddd;}}"
+                      f".line-content{{flex-grow:1;padding-left:10px;}}"
+                      f".equal{{background-color:#fff;}}.delete{{background-color:{HTML_COLOR_DELETED_BG};}}"
+                      f".insert{{background-color:{HTML_COLOR_ADDED_BG};}}"
+                      f".placeholder{{background-color:{HTML_COLOR_PLACEHOLDER_BG};color:#aaa;font-style:italic;}}"
+                      f".new-file-placeholder{{background-color:{HTML_COLOR_DELETED_BG};color:#aaa;font-style:italic;text-align:center;}}"
+                      f"</style>")
         original_html = [html_style, "<body>"]; proposed_html = [html_style, "<body>"]
-        def format_line(num, content, css): esc_content = html.escape(content).replace(" ", "&nbsp;") or "&nbsp;"; num_str = str(num) if isinstance(num, int) else "&nbsp;"; return f'<div class="line {css}"><div class="line-num">{num_str}</div><div class="line-content">{esc_content}</div></div>'
-        if is_new_file: original_html.append('<div class="line new-file-placeholder"><div class="line-num">&nbsp;</div><div class="line-content">&lt;New File&gt;</div></div>');
-        for i, line in enumerate(proposed_lines): proposed_html.append(format_line(i + 1, line, 'insert'))
+        def format_line(num, content, css):
+            esc_content = html.escape(content).replace(" ", "&nbsp;") or "&nbsp;"
+            num_str = str(num) if isinstance(num, int) else "&nbsp;"
+            return f'<div class="line {css}"><div class="line-num">{num_str}</div><div class="line-content">{esc_content}</div></div>'
+        if is_new_file:
+            original_html.append('<div class="line new-file-placeholder"><div class="line-num">&nbsp;</div><div class="line-content">&lt;New File&gt;</div></div>')
+            for i, line in enumerate(proposed_lines):
+                proposed_html.append(format_line(i + 1, line, 'insert'))
         else:
             matcher = difflib.SequenceMatcher(None, original_lines, proposed_lines, autojunk=False); o_num, p_num = 1, 1
             for tag, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -544,12 +557,12 @@ class MainWindow(QMainWindow):
         userInstruction: str = self._promptInput.toPlainText().strip()
         if not userInstruction: self._showError("LLM Instruction Missing", "Please enter instructions for the LLM."); return
         if not self._clonedRepoPath: self._showError("Repository Not Loaded", "Please load a repository before sending to the LLM."); return
-        
+
         # _selectedFiles is updated by _handleSelectionChange
         if not self._selectedFiles:
-            reply = QMessageBox.question(self, "No Files Selected", 
-                                       "No files are selected to provide context to the LLM. Proceed without file context?", 
-                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, 
+            reply = QMessageBox.question(self, "No Files Selected",
+                                       "No files are selected to provide context to the LLM. Proceed without file context?",
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                                       QMessageBox.StandardButton.Cancel)
             if reply == QMessageBox.StandardButton.Cancel: return
             file_context_msg = "without file context"
@@ -572,15 +585,15 @@ class MainWindow(QMainWindow):
         logger.info(f"File reading finished ({len(fileContents)} files). Querying LLM...")
         self._originalFileContents = fileContents; # Store original contents
         self._displaySelectedFileDiff(self._fileListWidget.currentItem(), None) # Update diff for focused file
-        try: 
+        try:
             modelName = self._configManager.getConfigValue('General', 'DefaultLlmModel', fallback='gemini-1.5-flash-latest') or 'gemini-1.5-flash-latest'
-        except ConfigurationError as e: 
+        except ConfigurationError as e:
             self._showError("Config Error", f"Could not read LLM model from config: {e}")
             self._resetTaskState()
             return
-        try: 
+        try:
             prompt = self._llmInterfaceInstance.buildPrompt(userInstruction, fileContents)
-        except Exception as e: 
+        except Exception as e:
             self._showError("Prompt Error", f"Failed to build prompt for LLM: {e}")
             self._resetTaskState()
             return
@@ -595,7 +608,7 @@ class MainWindow(QMainWindow):
         # Clear only proposed area, keep original area based on focus
         self._proposedCodeArea.clear()
         # Don't clear originalFileContents here, it holds the baseline
-        
+
         # Switch to the LLM Response tab
         llm_tab_index = -1
         for i in range(self._bottomTabWidget.count()):
@@ -617,9 +630,9 @@ class MainWindow(QMainWindow):
         if self._isBusy: self._showWarning("Busy", "Another task is currently running. Please wait."); return
         llmResponse: str = self._llmResponseArea.toPlainText().strip()
         if not llmResponse: self._showError("Empty Response", "The LLM Response area is empty. Cannot parse."); return
-        try: 
+        try:
             expectedFormat = self._configManager.getConfigValue('General', 'ExpectedOutputFormat', fallback='json') or 'json'
-        except ConfigurationError as e: 
+        except ConfigurationError as e:
             self._showError("Config Error", f"Could not read expected output format from config: {e}")
             return
         logger.info(f"Requesting parse & validate (format: {expectedFormat})...")
@@ -639,9 +652,9 @@ class MainWindow(QMainWindow):
         if not self._clonedRepoPath or not os.path.isdir(self._clonedRepoPath): self._showError("Invalid Repository Path", "The loaded repository path is invalid or inaccessible."); return
         fileCount = len(self._parsedFileData);
         if fileCount == 0: self._showInfo("No Changes to Save", "The parsed LLM response indicated no files needed modification."); return
-        reply = QMessageBox.question(self, 'Confirm Save', 
-                                   f"This will overwrite {fileCount} file(s) in the local repository:\n'{self._clonedRepoPath}'\n\nProceed with saving?", 
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, 
+        reply = QMessageBox.question(self, 'Confirm Save',
+                                   f"This will overwrite {fileCount} file(s) in the local repository:\n'{self._clonedRepoPath}'\n\nProceed with saving?",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                                    QMessageBox.StandardButton.Cancel)
         if reply == QMessageBox.StandardButton.Cancel: return
         logger.info(f"Requesting save of {fileCount} files..."); self._isBusy = True; self._updateWidgetStates(); self._updateStatusBar("Saving files locally..."); self._updateProgress(-1, "Saving files...")
@@ -652,43 +665,43 @@ class MainWindow(QMainWindow):
     def _handleCommitPush(self: 'MainWindow') -> None:
         if self._isBusy: self._showWarning("Busy", "Another task is currently running. Please wait."); return
         if not self._clonedRepoPath or not os.path.isdir(self._clonedRepoPath): self._showError("Invalid Repository Path", "The loaded repository path is invalid or inaccessible."); return
-        try: 
+        try:
             self._repoIsDirty = self._githubHandlerInstance.isDirty(self._clonedRepoPath)
-        except Exception as e: 
+        except Exception as e:
             self._showError("Git Status Error", f"Could not check repository status: {e}")
             return
-        if not self._repoIsDirty: 
+        if not self._repoIsDirty:
             self._showInfo("No Changes to Commit", "The repository is clean. There are no changes to commit and push.")
             self._updateWidgetStates()
             return
-        try: 
+        try:
             defaultMsg = self._configManager.getConfigValue('GitHub', 'DefaultCommitMessage', fallback="LLM Update via ColonelCode")
-        except ConfigurationError as e: 
+        except ConfigurationError as e:
             self._showWarning("Config Warning", f"Could not read default commit message from config: {e}")
             defaultMsg = "LLM Update via ColonelCode"
         commitMessage, ok = QInputDialog.getText(self, "Commit Message", "Enter commit message:", QLineEdit.EchoMode.Normal, defaultMsg)
-        if not ok or not commitMessage.strip(): 
+        if not ok or not commitMessage.strip():
             self._showWarning("Commit Cancelled", "Commit message was empty or the dialog was cancelled.")
             return
         commitMessage = commitMessage.strip()
-        try: 
+        try:
             remote = self._configManager.getConfigValue('GitHub', 'DefaultRemoteName', fallback='origin') or 'origin'
             branch = self._configManager.getConfigValue('GitHub', 'DefaultBranchName', fallback='main') or 'main'
-        except ConfigurationError as e: 
+        except ConfigurationError as e:
             self._showError("Config Error", f"Could not read Git remote/branch settings from config: {e}")
             return
-        reply = QMessageBox.question(self, 'Confirm Commit & Push', 
-                                   f"Commit changes and push to remote '{remote}/{branch}'?\n\nCommit Message:\n'{commitMessage}'", 
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, 
+        reply = QMessageBox.question(self, 'Confirm Commit & Push',
+                                   f"Commit changes and push to remote '{remote}/{branch}'?\n\nCommit Message:\n'{commitMessage}'",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                                    QMessageBox.StandardButton.Cancel)
         if reply == QMessageBox.StandardButton.Cancel: return
         logger.info(f"Requesting commit and push..."); self._isBusy = True; self._updateWidgetStates(); self._updateStatusBar("Committing and pushing changes..."); self._updateProgress(-1, "Commit/Push...")
         self._githubWorker.startCommitPush(self._clonedRepoPath, commitMessage, remote, branch)
 
-    # --- Worker Thread Callback Slots --- 
+    # --- Worker Thread Callback Slots ---
     @Slot(int, str)
     def _updateProgress(self: 'MainWindow', value: int, message: str) -> None: # Unchanged
-        if not self._isBusy: 
+        if not self._isBusy:
             self._progressBar.setVisible(False)
             return
         self._progressBar.setVisible(True)
@@ -705,11 +718,12 @@ class MainWindow(QMainWindow):
             self._progressBar.setValue(0)
             self._progressBar.setFormat("%p%")
         # Always update status bar if message is provided
-        if message: 
+        if message:
             self._updateStatusBar(message)
-            
+
+    # --- _onCloneFinished (MODIFIED to add diagnostic logging and fix gitignore_parser call) ---
     @Slot(str, list)
-    def _onCloneFinished(self: 'MainWindow', repoPath: str, fileList: list) -> None: # Unchanged
+    def _onCloneFinished(self: 'MainWindow', repoPath: str, fileList: list) -> None:
         logger.info(f"Clone/Load finished successfully. Path: {repoPath}, Files: {len(fileList)}")
         self._isBusy = False
         self._clonedRepoPath = repoPath
@@ -722,10 +736,84 @@ class MainWindow(QMainWindow):
         self._promptInput.clear()
         self._saveLastRepoPath(repoPath)
         self._updateStatusBar(f"Repository loaded ({len(fileList)} files). Checking status...", 5000)
+
+        # --- .gitignore Handling ---
+        gitignore_path = os.path.join(repoPath, '.gitignore')
+        matches = None # Initialize matches to None
+        try:
+            if os.path.exists(gitignore_path):
+                # Import locally to handle optional dependency and aid diagnosis
+                import gitignore_parser
+                # --- ADDED DIAGNOSTIC LOGGING ---
+                logger.debug(f"Attempting to use gitignore_parser module: {gitignore_parser}")
+                try:
+                    logger.debug(f"Found gitignore_parser module at: {getattr(gitignore_parser, '__file__', 'N/A')}")
+                except Exception: pass # Ignore errors getting __file__
+                # --- END DIAGNOSTIC LOGGING ---
+
+                # --- FIX: Use the correct function name if 'parse' doesn't exist ---
+                # Check if 'parse' exists, otherwise assume the intended function might be
+                # implicitly called when creating the object (common pattern) or another name.
+                # The library 'gitignore-parser' typically uses `gitignore_parser.parse(filepath)`
+                # or `gitignore_parser.parse(file_handle)`. Let's stick to the file handle approach.
+                if hasattr(gitignore_parser, 'parse'):
+                    with open(gitignore_path, 'r', encoding='utf-8') as f:
+                        matches = gitignore_parser.parse(f) # This was the line causing AttributeError
+                    logger.info(f"Loaded .gitignore rules from {gitignore_path} using gitignore_parser.parse()")
+                else:
+                    # If 'parse' is not found, log a warning. Maybe the library API changed,
+                    # or it's a different library altogether. We won't be able to parse.
+                    logger.warning("Module 'gitignore_parser' loaded, but does not have a 'parse' attribute. Cannot parse .gitignore.")
+                    self._appendLogMessage("WARNING: gitignore_parser module found but lacks 'parse' function. Cannot apply .gitignore rules.")
+                    matches = None # Ensure matches remains None
+
+            else:
+                logger.info(".gitignore not found in repository root.")
+        except ImportError:
+            logger.warning("gitignore_parser library not found. Cannot exclude files based on .gitignore. Install with 'pip install gitignore-parser'")
+            self._appendLogMessage("WARNING: gitignore_parser library not found. Cannot exclude files based on .gitignore. Install with 'pip install gitignore-parser'")
+            matches = None # Ensure matches is None
+        except AttributeError as ae: # Catch the specific error again just in case
+             logger.error(f"AttributeError encountered with gitignore_parser: {ae}. This might indicate an installation issue, namespace conflict or API change. Please ensure 'gitignore-parser' is correctly installed (`pip install gitignore-parser`) and there are no local files named 'gitignore_parser.py' interfering.", exc_info=True)
+             self._appendLogMessage(f"ERROR: Failed to use gitignore_parser due to AttributeError: {ae}. Check installation and potential conflicts.")
+             matches = None # Ensure matches is None
+        except Exception as e:
+            # Log other errors during reading/parsing
+            logger.error(f"Error reading or parsing .gitignore: {e}", exc_info=True) # Log traceback for unexpected errors
+            self._appendLogMessage(f"ERROR: Failed reading/parsing .gitignore: {e}")
+            matches = None # Ensure matches is None
+        # --- End .gitignore Handling ---
+
         self._fileListWidget.clear()
         self._fileListWidget.addItems(sorted(fileList))
-        self._selectedFiles = [] # Reset selection
-        
+        # self._selectedFiles = [] # Reset selection - Now handled below
+
+        # --- Set default selection based on .gitignore ---
+        selected_files_init = []
+        for i in range(self._fileListWidget.count()):
+            item = self._fileListWidget.item(i)
+            file_path_relative = item.text()
+            # Construct absolute path for matching (gitignore_parser needs absolute paths relative to the .gitignore location)
+            file_path_absolute = os.path.join(repoPath, file_path_relative)
+
+            should_select = True # Select by default
+            if matches and callable(matches): # Check if 'matches' callable was successfully created
+                try:
+                    if matches(file_path_absolute):
+                        should_select = False # Ignore if matched by .gitignore
+                        logger.debug(f"Ignoring file based on .gitignore: {file_path_relative}")
+                except Exception as e:
+                     logger.warning(f"Error matching file '{file_path_relative}' against .gitignore rules: {e}")
+
+            if should_select:
+                item.setSelected(True)
+                selected_files_init.append(file_path_relative)
+        # --- End default selection ---
+
+        # Explicitly update the internal state AFTER setting selection programmatically
+        self._selectedFiles = sorted(selected_files_init)
+        logger.debug(f"Initial file selection set (excluding .gitignore). Selected: {self._selectedFiles}")
+
         # Automatically check dirty status after successful load
         if not self._isBusy and self._clonedRepoPath:
             self._isBusy = True
@@ -735,7 +823,8 @@ class MainWindow(QMainWindow):
         else:
             logger.warning("Cannot start dirty check after clone/load operation finished.")
             self._updateWidgetStates()
-            
+
+
     @Slot(bool)
     def _onIsDirtyFinished(self: 'MainWindow', is_dirty: bool) -> None: # Unchanged
         logger.info(f"Repository dirty status check completed: {is_dirty}")
@@ -753,7 +842,7 @@ class MainWindow(QMainWindow):
         logger.info(f"LLM query finished. Response length: {len(response)}")
         self._isBusy = False; self._updateProgress(100, "LLM query complete.")
         self._llmResponseArea.setPlainText(response); # Always display the latest response
-        
+
         # Switch to the LLM Response tab
         llm_tab_index = -1
         for i in range(self._bottomTabWidget.count()):
@@ -762,7 +851,7 @@ class MainWindow(QMainWindow):
                 break
         if llm_tab_index != -1:
             self._bottomTabWidget.setCurrentIndex(llm_tab_index)
-            
+
         self._parsedFileData = None; self._validationErrors = None
         self._proposedCodeArea.clear() # Clear proposed diff until parsed
         self._displaySelectedFileDiff(self._fileListWidget.currentItem(), None) # Show original against blank proposed
@@ -785,7 +874,7 @@ class MainWindow(QMainWindow):
         self._isBusy = False
         self._parsedFileData = parsedData
         self._validationErrors = validationResults if validationResults else None
-        
+
         # Ensure original content is loaded for all parsed files
         if self._clonedRepoPath and self._parsedFileData:
             logger.debug("Ensuring original content is cached for parsed files before displaying diff...")
@@ -802,15 +891,15 @@ class MainWindow(QMainWindow):
                             self._originalFileContents[file_path] = f"<Error reading file: {e}>"
                     else:
                         # Mark as non-existent if it wasn't in cache and doesn't exist now
-                        self._originalFileContents[file_path] = None 
+                        self._originalFileContents[file_path] = None
                         logger.debug(f"Original file {file_path} not found locally after parse (likely new file).")
-        
+
         if self._validationErrors:
             log_message = ["--- Validation Failed ---"]; error_files = []
-            for file_path, errors in self._validationErrors.items(): 
-                error_files.append(os.path.basename(file_path)) 
+            for file_path, errors in self._validationErrors.items():
+                error_files.append(os.path.basename(file_path))
                 log_message.append(f"  File: {file_path}")
-                for error in errors: 
+                for error in errors:
                     log_message.append(f"    * {error}")
             log_message.append("-------------------------")
             self._appendLogMessage("\n".join(log_message))
@@ -819,14 +908,14 @@ class MainWindow(QMainWindow):
             status_msg = f"Response parsed. Validation FAILED ({len(self._validationErrors)} file(s))."
         else:
             status_msg = f"Response parsed ({len(parsedData)} files found). Validation OK.";
-            if not parsedData: 
+            if not parsedData:
                 status_msg = "Response parsed: No changes found. Validation OK."
             self._appendLogMessage("--- Validation OK ---")
             # Clear correction flag ONLY on successful validation
             self._correction_attempted = False
 
         self._updateStatusBar(status_msg, 10000); self._updateProgress(100, "Parse & Validate complete.")
-        
+
         # Add any new files mentioned in the parsed data to the list widget
         current_files_in_widget = set(self._fileListWidget.item(i).text() for i in range(self._fileListWidget.count()))
         new_files_added_to_widget = False
@@ -859,17 +948,17 @@ class MainWindow(QMainWindow):
             self._parsedFileData = None # Clear parsed data after successful save
             self._validationErrors = None;
             self._displaySelectedFileDiff(self._fileListWidget.currentItem(), None) # Refresh diff
-        else: 
+        else:
             logger.info("Saving finished, but no files were listed as saved (potentially an issue or no actual changes needed saving).")
             # Optionally show info even if savedFiles is empty, if parsedData existed
-            if self._parsedFileData is not None: 
+            if self._parsedFileData is not None:
                  self._showInfo("Save Complete", "Processing complete, but no files reported as saved.")
                  self._parsedFileData = None # Clear anyway
                  self._validationErrors = None
                  self._displaySelectedFileDiff(self._fileListWidget.currentItem(), None)
 
         self._updateWidgetStates()
-        
+
     @Slot(str)
     def _onCommitPushFinished(self: 'MainWindow', message: str) -> None: # Unchanged
         logger.info(f"Commit/Push finished: {message}")
@@ -886,7 +975,7 @@ class MainWindow(QMainWindow):
         self._llmResponseArea.clear()
         self._promptInput.clear()
         self._updateWidgetStates()
-        
+
     @Slot(str, bool)
     def _onPullFinished(self: 'MainWindow', message: str, had_conflicts: bool) -> None: # Unchanged
         logger.info(f"Pull finished: {message}, Conflicts: {had_conflicts}")
@@ -909,17 +998,17 @@ class MainWindow(QMainWindow):
             elif self._clonedRepoPath:
                 logger.warning("Could not automatically re-check dirty status after pull.")
                 self._repoIsDirty = False # Assume clean if we can't check
-                
+
         self._updateWidgetStates()
 
-    # --- Error Handling Slots --- 
+    # --- Error Handling Slots ---
     @Slot(str)
     def _handleWorkerError(self: 'MainWindow', errorMessage: str) -> None: # Unchanged
         logger.critical(f"Unexpected worker thread error: {errorMessage}")
         self._resetTaskState()
         self._showError("Unexpected Background Task Error", f"A critical internal error occurred in a background task:\n{errorMessage}")
         self._appendLogMessage(f"CRITICAL ERROR: {errorMessage}")
-        
+
     @Slot(str)
     def _handleGitHubError(self: 'MainWindow', errorMessage: str) -> None: # Unchanged
         logger.error(f"GitHub operation failed: {errorMessage}")
@@ -927,7 +1016,7 @@ class MainWindow(QMainWindow):
         is_load_error = any(s in errorMessage.lower() for s in ["clone", "load", "not found", "authentication failed", "valid git repo", "invalid repository"])
         self._resetTaskState()
         self._showError("GitHub Error", errorMessage)
-        if is_load_error: 
+        if is_load_error:
             # Reset state fully if loading failed
             self._clonedRepoPath = None
             self._fileListWidget.clear()
@@ -942,7 +1031,7 @@ class MainWindow(QMainWindow):
             self._selectedFiles = []
             self._updateWidgetStates()
         self._appendLogMessage(f"GIT ERROR: {errorMessage}")
-        
+
     @Slot(str)
     def _handleLLMError(self: 'MainWindow', errorMessage: str) -> None: # Unchanged
         logger.error(f"LLM operation failed: {errorMessage}")
@@ -1010,7 +1099,7 @@ class MainWindow(QMainWindow):
                 self._updateWidgetStates()
             self._appendLogMessage(f"FILE/PARSE ERROR (Final): {errorMessage}")
 
-    # --- Utility Methods --- 
+    # --- Utility Methods ---
     def _updateWidgetStates(self: 'MainWindow') -> None: # Unchanged
         """Enable/disable widgets based on the current application state."""
         repoLoaded = self._clonedRepoPath is not None and os.path.isdir(self._clonedRepoPath)
@@ -1025,19 +1114,19 @@ class MainWindow(QMainWindow):
         self._repoUrlInput.setEnabled(enabledIfNotBusy)
         self._browseButton.setEnabled(enabledIfNotBusy)
         self._cloneButton.setEnabled(enabledIfNotBusy)
-        
+
         # Middle section
         self._fileListWidget.setEnabled(enabledIfNotBusy and repoLoaded)
         self._promptInput.setEnabled(enabledIfNotBusy and repoLoaded)
         self._sendToLlmButton.setEnabled(enabledIfNotBusy and repoLoaded)
         self._pasteResponseButton.setEnabled(enabledIfNotBusy)
-        
+
         # Bottom section
         self._llmResponseArea.setEnabled(enabledIfNotBusy) # Allow pasting even if not loaded
         self._parseButton.setEnabled(enabledIfNotBusy and responseAvailable)
         self._saveFilesButton.setEnabled(enabledIfNotBusy and parsedDataHasContent and repoLoaded and validationPassed)
         self._commitPushButton.setEnabled(enabledIfNotBusy and repoLoaded and repoIsActuallyDirty)
-        
+
         # Log state for debugging
         # logger.debug(f"Widget states updated: Busy={self._isBusy}, RepoLoaded={repoLoaded}, ResponseAvailable={responseAvailable}, ParsedDataAvailable={parsedDataAvailable}, ValidationPassed={validationPassed}, RepoDirty={repoIsActuallyDirty}")
 
@@ -1048,27 +1137,27 @@ class MainWindow(QMainWindow):
         self._updateWidgetStates()
         self._updateProgress(0, "Task finished or failed.") # Hide progress bar
         self._updateStatusBar("Idle.")
-        
+
     def _updateStatusBar(self: 'MainWindow', message: str, timeout: int = 0) -> None: # Unchanged
         """Updates the status bar message."""
         if self._statusBar:
             self._statusBar.showMessage(message, timeout)
-            
+
     def _showError(self: 'MainWindow', title: str, message: str) -> None: # Unchanged
         """Displays a critical error message box."""
         logger.error(f"{title}: {message}")
         QMessageBox.critical(self, title, message)
-        
+
     def _showWarning(self: 'MainWindow', title: str, message: str) -> None: # Unchanged
         """Displays a warning message box."""
         logger.warning(f"{title}: {message}")
         QMessageBox.warning(self, title, message)
-        
+
     def _showInfo(self: 'MainWindow', title: str, message: str) -> None: # Unchanged
         """Displays an informational message box."""
         logger.info(f"Info Dialog: {title} - {message}")
         QMessageBox.information(self, title, message)
-        
+
     @Slot(str)
     def _appendLogMessage(self: 'MainWindow', message: str) -> None: # Unchanged
         """Appends a message to the GUI log area."""
@@ -1076,8 +1165,8 @@ class MainWindow(QMainWindow):
             self._appLogArea.append(message)
             # Optional: Auto-scroll to bottom
             # self._appLogArea.verticalScrollBar().setValue(self._appLogArea.verticalScrollBar().maximum())
-            
-    # --- Scroll Synchronization --- 
+
+    # --- Scroll Synchronization ---
     @Slot(int)
     def _syncScrollProposedFromOriginal(self, value: int) -> None: # Unchanged
         """Syncs the proposed code area scrollbar when the original one moves."""
@@ -1085,7 +1174,7 @@ class MainWindow(QMainWindow):
             self._is_syncing_scroll = True
             self._proposedCodeArea.verticalScrollBar().setValue(value)
             self._is_syncing_scroll = False
-            
+
     @Slot(int)
     def _syncScrollOriginalFromProposed(self, value: int) -> None: # Unchanged
         """Syncs the original code area scrollbar when the proposed one moves."""
@@ -1093,7 +1182,7 @@ class MainWindow(QMainWindow):
             self._is_syncing_scroll = True
             self._originalCodeArea.verticalScrollBar().setValue(value)
             self._is_syncing_scroll = False
-            
+
     def _syncScrollbars(self) -> None: # Unchanged
         """Forces synchronization of scrollbars, typically after loading new content."""
         if not self._is_syncing_scroll:
@@ -1101,19 +1190,19 @@ class MainWindow(QMainWindow):
             orig_val = self._originalCodeArea.verticalScrollBar().value()
             self._proposedCodeArea.verticalScrollBar().setValue(orig_val)
             self._is_syncing_scroll = False
-            
-    # --- Window Close Event --- 
+
+    # --- Window Close Event ---
     def closeEvent(self: 'MainWindow', event) -> None: # Unchanged
         """Handles the window close event, ensuring background tasks are stopped."""
         if self._isBusy:
-            reply = QMessageBox.question(self, 'Confirm Exit', 
-                                       "A background task is currently running. Are you sure you want to exit?", 
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, 
+            reply = QMessageBox.question(self, 'Confirm Exit',
+                                       "A background task is currently running. Are you sure you want to exit?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                                        QMessageBox.StandardButton.Cancel)
             if reply == QMessageBox.StandardButton.Cancel:
                 event.ignore()
                 return
-                
+
         logger.info("Attempting graceful shutdown of worker threads...")
         workers = [self._githubWorker, self._llmWorker, self._fileWorker]
         for worker in workers:
@@ -1123,6 +1212,6 @@ class MainWindow(QMainWindow):
                 if not worker.wait(1500): # Wait up to 1.5 seconds
                     logger.warning(f"{worker.__class__.__name__} did not terminate gracefully. Forcing termination.")
                     # worker.terminate() # Use terminate() cautiously as it can cause issues
-                    
+
         logger.info("Shutdown complete. Closing application window.")
         super().closeEvent(event)

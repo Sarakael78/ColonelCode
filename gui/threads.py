@@ -455,6 +455,16 @@ class FileWorker(BaseWorker):
                 self.progressUpdate.emit(-1, f"Parsing {fmt}...")
                 codeBlockContent = self._args[0]
                 parsedData: Dict[str, str] = self._handler.parseStructuredOutput(codeBlockContent, fmt)
+
+                # --- Log proposed file updates ---
+                if parsedData:
+                    logger.info("LLM proposes updates for the following files:")
+                    for file_path in sorted(parsedData.keys()): # Log in sorted order for consistency
+                        logger.info(f"  - {file_path}")
+                else:
+                    logger.info("LLM response parsed, but contained no file updates.")
+                # --- End log proposed file updates ---
+
                 self.statusUpdate.emit(f"Validating {len(parsedData)} file(s)...")
                 self.progressUpdate.emit(-1, f"Validating {len(parsedData)} files...")
                 validationResults: Dict[str, List[str]] = {}
