@@ -9,14 +9,12 @@ import logging
 import sys
 import os
 from logging.handlers import RotatingFileHandler
-from typing import List # Import List type hint explicitly
+from typing import List, Optional # Import List, Optional
 
-# Define a standard format - can be customised further
-LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
-DATE_FORMAT: str = '%Y-%m-%d %H:%M:%S'
+# Define standard formats - can be customised via config or arguments
+DEFAULT_LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
+DEFAULT_DATE_FORMAT: str = '%Y-%m-%d %H:%M:%S'
 
-# Adhering to user preference for explicit initialisation
-logHandlers: List[logging.Handler] = [] # Use List type hint
 
 def setupLogging(
 	logLevel: int = logging.INFO,
@@ -26,12 +24,15 @@ def setupLogging(
 	logFileLevel: int = logging.INFO,
 	logDir: str = 'logs', # Default log directory
 	maxBytes: int = 10*1024*1024, # 10 MB
-	backupCount: int = 5
+	backupCount: int = 5,
+	logFormat: str = DEFAULT_LOG_FORMAT,
+	dateFormat: str = DEFAULT_DATE_FORMAT
 ) -> logging.Logger:
 	"""
 	Configures the root logger for the application.
 
 	Sets up console and/or file logging handlers with specified levels and formats.
+	Removes existing handlers before adding new ones to prevent duplication.
 
 	Args:
 		logLevel (int): The minimum logging level for the root logger (default: INFO).
@@ -42,18 +43,16 @@ def setupLogging(
 		logDir (str): The directory where the log file should be stored.
 		maxBytes (int): The maximum size in bytes before the log file rotates.
 		backupCount (int): The number of backup log files to keep.
+		logFormat (str): The logging format string.
+		dateFormat (str): The date format string for the formatter.
 
 	Returns:
 		logging.Logger: The configured root logger instance.
-
-	# TODO: Implement a custom logging handler (e.g., in gui/gui_utils.py) that emits Qt signals
-	      to update a QTextEdit widget in the GUI. Add an option here to attach it.
 	"""
-	# Using global list as per user style preference example, although direct assignment is more common
-	global logHandlers
-	logHandlers = [] # Reset handlers each time setup is called (important if re-configuring)
+	# Declare list locally
+	logHandlers: List[logging.Handler] = []
 
-	formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+	formatter: logging.Formatter = logging.Formatter(logFormat, datefmt=dateFormat)
 
 	# Configure Console Handler
 	if logToConsole:
@@ -67,10 +66,12 @@ def setupLogging(
 	if logToFile:
 		try:
 			# Ensure log directory exists
-			if not os.path.exists(logDir):
-				os.makedirs(logDir, exist_ok=True)
+			# Use os.path.abspath to handle relative paths robustly
+			absLogDir = os.path.abspath(logDir)
+			if not os.path.exists(absLogDir):
+				os.makedirs(absLogDir, exist_ok=True)
 
-			logFilePath: str = os.path.join(logDir, logFileName)
+			logFilePath: str = os.path.join(absLogDir, logFileName)
 
 			# Use RotatingFileHandler for better log management
 			fileHandler: RotatingFileHandler = RotatingFileHandler(
@@ -85,23 +86,20 @@ def setupLogging(
 		except (OSError, IOError) as e:
 			# If file logging setup fails, log an error to console (if available)
 			# or just print, and continue without file logging.
-			fallbackLogger: logging.Logger = logging.getLogger(__name__)
-			# Ensure there's at least a console handler temporarily if others failed
-			if not any(isinstance(h, logging.StreamHandler) for h in fallbackLogger.handlers):
-					fallbackLogger.addHandler(logging.StreamHandler(sys.stderr))
-			fallbackLogger.setLevel(logging.ERROR)
-			fallbackLogger.error(f"Failed to configure file logging to '{logFilePath}': {e}", exc_info=True)
-			# Optionally re-raise or handle differently depending on requirements
+			print(f"ERROR: Failed to configure file logging to '{os.path.join(logDir, logFileName)}': {e}", file=sys.stderr)
+			# Log using root logger if console handler was added
+			if logToConsole:
+				logging.getLogger().error(f"Failed to configure file logging: {e}", exc_info=False)
 
 
 	# Get the root logger and configure it
 	rootLogger: logging.Logger = logging.getLogger()
 	rootLogger.setLevel(logLevel)
 
-	# Clear existing handlers (important if re-configuring, prevents duplicate logs)
+	# Clear existing handlers before adding new ones (important if re-configuring)
 	if rootLogger.hasHandlers():
 		# Explicitly copy list before iterating for removal
-		existingHandlers: List[logging.Handler] = rootLogger.handlers[:] # Use List type hint
+		existingHandlers: List[logging.Handler] = rootLogger.handlers[:]
 		for handler in existingHandlers:
 			rootLogger.removeHandler(handler)
 
@@ -110,7 +108,7 @@ def setupLogging(
 		rootLogger.addHandler(handler)
 
 	if logHandlers: # Only log if handlers were successfully added
-		rootLogger.info(f"Logging initialised (Level: {logging.getLevelName(rootLogger.level)}). Console: {logToConsole}, File: {logToFile} (Level: {logging.getLevelName(logFileLevel)} in '{os.path.join(logDir, logFileName)}').")
+		rootLogger.info(f"Logging initialised (Root Level: {logging.getLevelName(rootLogger.level)}). Console: {logToConsole}, File: {logToFile} (Level: {logging.getLevelName(logFileLevel)} in '{os.path.join(logDir, logFileName)}').")
 	else:
 		print("WARNING: Logging initialisation completed but no handlers were configured.", file=sys.stderr)
 

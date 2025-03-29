@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Code Updater - Scope and Roadmap (Updated)</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; }
+        h1, h2, h3 { color: #333; }
+        code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; font-family: monospace; }
+        pre { background-color: #f4f4f4; padding: 1em; border-radius: 4px; overflow-x: auto; }
+        pre code { padding: 0; background-color: transparent; border-radius: 0; }
+        ul { margin-left: 20px; }
+        li { margin-bottom: 0.5em; }
+        strong { font-weight: bold; }
+        em { font-style: italic; }
+        .status-complete { color: #339933; font-weight: bold; }
+        .status-critical { color: red; font-weight: bold; }
+        .status-high { color: orange; font-weight: bold; }
+        .status-medium { color: #b8860b; } /* DarkGoldenrod */
+        .status-low { color: #339933; } /* Darker Green */
+        .checkmark { color: green; font-weight: bold; margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+<h1>Colonol Code - LLM Code Updater - Scope and Roadmap (Updated)</h1>
+
+<p>This document outlines the revised project scope and roadmap for the LLM Code Updater application, reflecting the current implementation status based on code analysis.</p>
+
+<h2>Technologies and Strategies</h2>
+<ul>
+    <li><strong>GUI:</strong> <code>PySide6</code> for a modern look and feel and LGPL licence flexibility.</li>
+    <li><strong>GitHub Interaction:</strong> <code>gitpython</code> library for programmatic Git operations.</li>
+    <li><strong>LLM Interaction:</strong> <code>google-generativeai</code> for Gemini.</li>
+    <li><strong>Structured Data:</strong> <code>json</code> (primary implementation, configurable), <code>PyYAML</code> (supported, requires library).</li>
+    <li><strong>Configuration:</strong> <code>python-dotenv</code> for secrets (API keys), <code>configparser</code> for settings (<code>config.ini</code>)[cite: 1].</li>
+    <li><strong>Logging:</strong> <code>logging</code> (built-in) with console, rotating file, and custom GUI handlers.</li>
+    <li><strong>Architectural Design:</strong> <span class="checkmark">✓</span> Modular structure separating GUI (<code>gui/</code>), core logic (<code>core/</code>), utilities (<code>utils/</code>), and tests (<code>tests/</code>) implemented. Threading (<code>QThread</code>) used for background tasks (Git, LLM, File Processing).</li>
+    <li><strong>Error Handling:</strong> Custom exception hierarchy (<code>core/exceptions.py</code>), specific error signals in worker threads, GUI feedback via status bar, log area, and message boxes.</li>
+</ul>
+
+<h2>Application Structure</h2>
+<p>(Current structure matches the proposed modular design)</p>
+<pre><code>llm_code_updater/
+├── main.py                     # Application entry point
+├── gui/                        # PySide6 GUI components
+│   ├── __init__.py
+│   ├── main_window.py          # Main application window class
+│   ├── threads.py              # QThread workers for background tasks
+│   └── gui_utils.py            # GUI-specific helpers (QtLogHandler)
+├── core/                       # Core application logic (backend)
+│   ├── __init__.py
+│   ├── github_handler.py       # Handles Git operations
+│   ├── llm_interface.py        # Handles prompt creation and LLM interaction
+│   ├── file_processor.py       # Handles parsing LLM output and writing files
+│   ├── config_manager.py       # Manages configuration and secrets
+│   └── exceptions.py           # Custom exception classes
+├── utils/                      # Shared utility functions
+│   ├── __init__.py
+│   └── logger_setup.py         # Centralised logging configuration
+├── tests/                      # Unit and integration tests
+│   ├── __init__.py
+│   ├── test_config_manager.py  # Unit tests for ConfigManager
+│   ├── test_file_processor.py  # Unit tests for FileProcessor
+│   ├── test_github_handler.py  # Unit tests for GitHubHandler
+│   ├── test_llm_interface.py   # Unit tests for LLMInterface
+│   └── test_integration.py     # Integration tests for core workflow
+├── resources/                  # Static resources like icons
+│   └── app_icon.png            # (Referenced in main_window.py)
+├── docs/                       # Project documentation (This file, README)
+│   └── ROADMAP.html            # This file
+├── .env.example                # Example environment file
+├── .gitignore                  # Standard ignores
+├── config.ini                  # Application configuration file [cite: 1]
+├── requirements.txt            # Project dependencies
+└── README.md                   # Project overview (Assumed)
+</code></pre>
+
+<h2>Key Components and Functionality (Current Status)</h2>
+
+<h3>1. <code>main.py</code> (Entry Point) <span class="status-complete">[Implemented]</span></h3>
+<ul>
+    <li><span class="checkmark">✓</span> Initialises logging (console, file), configuration manager, and the main GUI window[cite: 2].</li>
+    <li><span class="checkmark">✓</span> Handles critical startup error checking (configuration, API keys). Uses <code>sys.exit(1)</code> on failure[cite: 2].</li>
+    <li><span class="checkmark">✓</span> Loads application icon[cite: 2].</li>
+    <li><span class="checkmark">✓</span> Starts the Qt event loop[cite: 2].</li>
+</ul>
+
+<h3>2. <code>gui/</code> (Graphical User Interface) <span class="status-complete">[Implemented]</span></h3>
+<ul>
+    <li><code>main_window.py</code>: <span class="checkmark">✓</span> Implements the main window layout (using `QSplitter`, various widgets). Connects UI actions (buttons, selections) to worker thread slots. Handles signals from workers for UI updates (status bar, progress bar, log area, file list) and error reporting (message boxes). Manages widget enabled/disabled states based on task status (`_isBusy`) and prerequisites (repo loaded, data parsed, repo dirty). Includes confirmation dialogs and commit message input. Implements graceful close event handling. Integrates `QtLogHandler`.</li>
+    <li><code>threads.py</code>: <span class="checkmark">✓</span> Defines <code>QThread</code> workers (`GitHubWorker`, `LLMWorker`, `FileWorker`) for background tasks (clone, list files, read file contents, check dirty status, query LLM, parse response, save files, commit/push). Workers encapsulate core logic handlers and emit specific signals for results, status/progress updates, and distinct error types. Includes task for reading file contents asynchronously.</li>
+    <li><code>gui_utils.py</code>: <span class="checkmark">✓</span> Contains the <code>QtLogHandler</code> which directs application logs to the GUI's log area via signals.</li>
+</ul>
+
+<h3>3. <code>core/</code> (Core Logic) <span class="status-complete">[Implemented]</span></h3>
+<ul>
+    <li><code>github_handler.py</code>: <span class="checkmark">✓</span> Implements Git operations (clone, ls-files, read file content, isDirty, add, commit, push) using <code>gitpython</code>. Relies on Git credential system (secure). Provides specific error handling for common Git scenarios. Includes path validation and progress reporting for clone.</li>
+    <li><code>llm_interface.py</code>: <span class="checkmark">✓</span> Implements prompt building (with detailed output specification and context injection). Queries Google Gemini API using <code>google-generativeai</code>. Includes retry logic. Reads generation parameters (temperature, max_tokens) and safety settings from config. Handles API key checks, safety block detection, and other API responses.</li>
+    <li><code>file_processor.py</code>: <span class="checkmark">✓</span> Implements code block extraction (configurable format). Parses extracted string into a dictionary (JSON/YAML). Validates parsed structure (dict[str, str]) and performs rigorous path validation (absolute paths, '..', invalid chars). Saves files to disk with path safety checks and directory creation.</li>
+    <li><code>config_manager.py</code>: <span class="checkmark">✓</span> Loads configuration from <code>.env</code> (secrets) and <code>config.ini</code> (settings). Provides access methods with type convenience (int, bool, float) and error handling for missing/invalid values.</li>
+    <li><code>exceptions.py</code>: <span class="checkmark">✓</span> Defines custom exception hierarchy (<code>BaseApplicationError</code>, <code>ConfigurationError</code>, <code>GitHubError</code>, <code>LLMError</code>, <code>ParsingError</code>, <code>FileProcessingError</code>).</li>
+</ul>
+
+<h3>4. <code>utils/</code> (Utilities) <span class="status-complete">[Implemented]</span></h3>
+<ul>
+    <li><code>logger_setup.py</code>: <span class="checkmark">✓</span> Configures root logger with console, rotating file, and GUI handlers. Formatters and levels are configurable via <code>config.ini</code>. Includes fallback for file logging setup errors.</li>
+</ul>
+
+<h3>5. <code>tests/</code> (Testing) <span class="status-complete">[Partially Implemented]</span></h3>
+<ul>
+    <li><span class="checkmark">✓</span> Unit tests exist for `config_manager`, `file_processor`, `github_handler`, and `llm_interface` using mocking.</li>
+    <li><span class="checkmark">✓</span> Integration tests (`test_integration.py`) exist, covering basic workflows and some error conditions for the core logic, mocking external APIs but using a real temp Git repo.</li>
+    <li><span class="status-critical">Overall test coverage (integration, GUI, end-to-end) remains incomplete and insufficient for production readiness.</span></li>
+</ul>
+
+<h2>Error Handling and User Feedback (Current Implementation) <span class="status-complete">[Implemented]</span></h2>
+<ul>
+    <li><strong>Custom Exceptions:</strong> Defined and used by core handlers.</li>
+    <li><strong>Worker Signals:</strong> Specific error signals and a general `errorOccurred` signal communicate issues back to the GUI from threads.</li>
+    <li><strong>GUI Feedback:</strong>
+        <ul>
+            <li><span class="checkmark">✓</span> Status Bar: Displays current operation status messages.</li>
+            <li><span class="checkmark">✓</span> Log Area: Receives detailed logs via `QtLogHandler`.</li>
+            <li><span class="checkmark">✓</span> Message Boxes: Used to report errors, success messages, and ask for confirmation.</li>
+            <li><span class="checkmark">✓</span> Input Dialogs: Used for commit message input.</li>
+            <li><span class="checkmark">✓</span> Progress Bar: Shows indeterminate/determinate progress during background tasks.</li>
+            <li><span class="checkmark">✓</span> Widget Disabling: Manages UI element enable/disable state based on task status and prerequisites.</li>
+        </ul>
+    </li>
+    <li><strong>Startup Error Handling:</strong> Robust checks in `main.py` for configuration and critical errors[cite: 2].</li>
+</ul>
+
+<h2>Best Industry Practices Employed (Current Status)</h2>
+<ul>
+    <li><span class="checkmark">✓</span> Modularity & Separation of Concerns</li>
+    <li><span class="checkmark">✓</span> Dependency Management (<code>requirements.txt</code> with pinned versions)</li>
+    <li><span class="checkmark">✓</span> Version Control (Git assumed)</li>
+    <li><span class="checkmark">✓</span> Configuration Management (Secrets `.env` vs. Settings `.ini`) [cite: 1]</li>
+    <li><span class="checkmark">✓</span> Robust Error Handling Framework (Custom Exceptions, Signalled Errors, GUI feedback)</li>
+    <li><span class="checkmark">✓</span> Centralised Logging (File, Console, GUI)</li>
+    <li><span class="checkmark">✓</span> Code Style & Linting (Adherence to PEP 8, User Preferences)</li>
+    <li><span class="checkmark">✓</span> Type Hinting (Used extensively)</li>
+    <li><span class="checkmark">✓</span> Basic Documentation (Docstrings, Roadmap)</li>
+    <li><span class="checkmark">✓</span> GUI Responsiveness (Threading for long tasks)</li>
+    <li><span class="checkmark">✓</span> Security Basics (Path validation, Secure credential handling via Git)</li>
+</ul>
+
+<h2>Identified Issues & Refinements Needed (Prioritised - Updated)</h2>
+<ul>
+    <li><span class="status-critical"><strong>Testing:</strong> Implement comprehensive integration and end-to-end tests. This remains the highest priority before considering production.</span></li>
+    <li><span class="status-medium"><strong>Security Review:</strong> Full review still advised, although basic path validation and secure Git credential handling are implemented.</li>
+    <li><span class="status-low"><strong>Git Integration:</strong> Add determinate progress reporting for push (fetch/clone have basic progress). Consider adding `pull` functionality.</span></li>
+    <li><span class="status-low"><strong>LLM Robustness:</strong> Implement token counting/truncation logic as a more accurate alternative to character-based limits.</li>
+    <li><span class="status-low"><strong>File Processor Robustness:</strong> Consider improving code block extraction beyond regex if it proves unreliable.</li>
+    <li><span class="status-low"><strong>Dependency Management:</strong> Implement vulnerability scanning for dependencies.</li>
+</ul>
+
+<h2>Future Enhancements / Next Steps</h2>
+<ul>
+    <li><strong>Testing:</strong> <span class="status-critical">(Highest Priority)</span> Implement comprehensive integration and end-to-end tests. Consider GUI testing frameworks if feasible.</li>
+    <li><strong>Core Functionality:</strong>
+        <ul>
+            <li>Implement LLM token counting/truncation logic.</li>
+            <li>Add Git `pull` functionality with conflict handling/warning.</li>
+            <li>Add visual diff view of changes before saving/committing.</li>
+            <li>Improve Git progress reporting detail (push, fetch).</li>
+        </ul>
+    </li>
+    <li><strong>Security:</strong> Conduct dependency vulnerability scanning. Perform thorough security review.</li>
+    <li><strong>GUI Enhancements:</strong>
+        <ul>
+            <li>Refine "Browse..." dialog logic.</li>
+            <li>Consider <code>QTreeView</code> for file list display.</li>
+            <li>Add theme selection, persistent settings.</li>
+        </ul>
+    </li>
+    <li><strong>Advanced Features:</strong>
+        <ul>
+            <li>Support for different LLMs or APIs.</li>
+            <li>Branch management features within the GUI.</li>
+        </ul>
+    </li>
+    <li><strong>Packaging:</strong> Package the application using PyInstaller or similar tools.</li>
+    <li><strong>Documentation:</strong> Generate formal documentation (e.g., using Sphinx). Enhance README with detailed setup and usage instructions.</li>
+</ul>
+
+</body>
+</html>
