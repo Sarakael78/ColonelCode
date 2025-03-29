@@ -1,0 +1,21 @@
+{
+    "Codebase Statistics": {
+        "Files": {
+            "Total Code Files": 22,
+            "Total Lines of Code": 6788
+        },
+        "Components": {
+            "Total Functions": 281,
+            "Total Classes": 34
+        }
+    },
+    "Code Quality": {
+        "Metrics": {
+            "Average Function Length": 18.73,
+            "Average File Length": 308.55
+        },
+        "Maintenance": {
+            "Total TODOs": 5
+        }
+    }
+}

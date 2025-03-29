@@ -152,7 +152,7 @@ class GitProgressHandler(git.remote.RemoteProgress):
 				logger.error("GitProgressHandler cannot emit signal: internal emitter not found.")
 
 			self._last_percentage = percentage if not (op_code & git.remote.RemoteProgress.END) else None # Reset last % after END
-			# logger.debug(f"Git Progress: {percentage}% - {status_message}") # Optional debug log
+			logger.debug(f"Git Progress: {percentage}% - {status_message}") # Optional debug log
 
 # --- GitHub Handler Class ---
 class GitHubHandler:
@@ -248,6 +248,14 @@ class GitHubHandler:
 					raise GitHubError(errMsg) from e
 
 			# Case 2: localPath does not exist or is an empty directory - proceed with cloning
+			# Check if the input was actually a local path that turned out *not* to be a repo
+			# We infer this if repoUrlOrPath and localPath are the same *and* the previous check failed
+			if repoUrlOrPath == localPath:
+				# If the input path was the target path, and we determined it's not a valid repo, raise an error.
+				errMsg = f"The specified local path '{localPath}' exists but is not a valid Git repository. Please select a valid repository or clone from a URL."
+				logger.error(errMsg)
+				raise GitHubError(errMsg)
+			
 			logger.info(f"Path '{localPath}' is not an existing valid repository. Proceeding with clone.")
 			if progress_handler and hasattr(progress_handler, '_emitter'):
 				progress_handler._emitter.progressUpdate.emit(0, "Preparing to clone...")

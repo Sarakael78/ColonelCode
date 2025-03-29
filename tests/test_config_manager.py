@@ -273,7 +273,6 @@ class TestConfigManager(unittest.TestCase):
 				cm.getConfigValue('Section', 'RequiredKey', required=True)
 			# FIX: has_option should be called
 			mock_has_option.assert_called_once_with('Section', 'RequiredKey')
-			# self.mock_logger.error.assert_called() # Logger check removed for simplicity
 
 	@patch('configparser.ConfigParser.has_option')
 	def test_getConfigValue_notFound_required_withFallback(self: 'TestConfigManager', mock_has_option: MagicMock) -> None:
@@ -309,7 +308,6 @@ class TestConfigManager(unittest.TestCase):
 			expected_regex = r"Required configuration value 'Key' not found in section 'Section'\. Config file 'test_config.ini' not found or not loaded successfully\."
 			with self.assertRaisesRegex(ConfigurationError, expected_regex):
 				cm.getConfigValue('Section', 'Key', required=True)
-			# self.mock_logger.error.assert_called() # Logger check removed
 
 	@patch('os.path.exists', return_value=True)
 	@patch('configparser.ConfigParser.read', side_effect=configparser.Error("Load failed"))
