@@ -1,17 +1,17 @@
 # Core GUI framework
-PySide6==6.6.0
+PySide6
 
 # Git interaction
-GitPython==3.1.30
+GitPython
 
 # Google Gemini LLM API
-google-generativeai==0.7.1
+google-generativeai
 
 # Loading environment variables (.env file)
-python-dotenv==1.0.0
+python-dotenv
 
 # YAML parsing and validation
-PyYAML==6.0.1
+PyYAML
 
 # Python code syntax checking (for validation)
-pyflakes==3.2.1
+pyflakes

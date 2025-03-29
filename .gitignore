@@ -95,7 +95,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .env/
 .venv
 .venv/
@@ -140,4 +139,7 @@ logs/
 
 # Specific project outputs
 cloned_repos/ 
+cd-output/
+tests/
+.vscode/
 # --- END: .gitignore ---

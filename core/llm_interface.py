@@ -107,7 +107,7 @@ class LLMInterface:
             logger.error(errMsg, exc_info=True)
             raise LLMError(errMsg) from e
 
-    def _count_tokens(self: 'LLMInterface', modelName: str, content: str | List[str | PartDict]) -> Optional[int]:
+    def _count_tokens(self: 'LLMInterface', modelName: str, content: Union[str, List[Union[str, PartDict]]]) -> Optional[int]:
         """ Counts tokens for the given content using the specified model. """
         if not content:
             logger.debug(
@@ -115,20 +115,20 @@ class LLMInterface:
                 "is empty. Returning 0 tokens."
             )
             return 0
-        
+
         try:
             model = self._get_model_instance(modelName, configure_api=True)
             if not model:
                 logger.error(f"Model instance '{modelName}' unavailable for token counting.")
                 return None
-            
+
             response = model.count_tokens(content)
             return response.total_tokens
-            
+
         except ConfigurationError as e:
             logger.error(f"Configuration error during token counting setup: {e}")
             return None
-            
+
         except google_exceptions.PermissionDenied as e:
             logger.error(
                 f"Permission denied counting tokens for model '{modelName}'. "
@@ -136,14 +136,14 @@ class LLMInterface:
                 exc_info=False
             )
             return None
-            
+
         except google_exceptions.GoogleAPIError as e:
             logger.error(
                 f"API error counting tokens for model '{modelName}': {e}",
                 exc_info=False
             )
             return None
-            
+
         except ValueError as e:
             logger.error(
                 f"Invalid value error counting tokens for model '{modelName}': {e}",
@@ -157,7 +157,7 @@ class LLMInterface:
                 )
                 return 0
             return None
-            
+
         except Exception as e:
             logger.error(
                 f"Unexpected error counting tokens for model '{modelName}': {e}",
@@ -455,17 +455,17 @@ class LLMInterface:
     ) -> str:
         """
         Sends the prompt to the specified LLM API (Google Gemini) and returns the response.
-        
+
         Args:
             prompt (str): The fully constructed prompt to send.
             modelName (Optional[str]): The specific LLM model to use (e.g., "gemini-pro").
                                    If None, the default from config is used.
             override_temperature (Optional[float]): If provided, uses this temperature instead
                                                 of the value from config.
-        
+
         Returns:
             str: The text response received from the LLM.
-        
+
         Raises:
             ConfigurationError: If the API key is missing or other configuration is invalid.
             LLMError: If there are issues communicating with the API.
@@ -476,14 +476,14 @@ class LLMInterface:
                 'DefaultLlmModel',
                 fallback='gemini-1.5-flash-latest'
             )
-            
+
             if not isinstance(resolved_model_name, str) or not resolved_model_name.strip():
                 resolved_model_name = 'gemini-1.5-flash-latest'
-            
+
             model = self._get_model_instance(resolved_model_name, configure_api=True)
             if not model:
                 raise LLMError(f"Failed to get model instance for '{resolved_model_name}'")
-            
+
             logger.debug(f"Using model instance: '{resolved_model_name}'")
 
             # Handle Temperature Override
@@ -532,9 +532,23 @@ class LLMInterface:
                 )
                 llmOutput: str = response.text  # This raises exceptions if blocked/stopped
                 if not llmOutput.strip():
-                    errMsg = "LLM returned an empty or whitespace-only response despite finishing normally."
-                    logger.error(errMsg)
-                    raise LLMError(errMsg)
+                    # Check if response finished normally despite empty text
+                    finish_reason = "UNKNOWN"
+                    if response.candidates and response.candidates[0].finish_reason:
+                        finish_reason = response.candidates[0].finish_reason.name
+                    if finish_reason == 'STOP':
+                        errMsg = "LLM returned an empty or whitespace-only response despite finishing normally (STOP)."
+                        logger.error(errMsg)
+                        # Decide whether to treat this as an error or return empty string
+                        # Raising error seems more robust for this application's expected output
+                        raise LLMError(errMsg)
+                    else:
+                         # If finish reason wasn't STOP, it's likely handled by StopCandidateException
+                         # Log a warning here for unexpected state
+                         logger.warning(f"LLM response text empty, finish reason: {finish_reason}. Exception expected.")
+                         # Let StopCandidateException handle it if applicable, otherwise generic error
+                         raise LLMError(f"LLM returned empty response with unexpected finish reason: {finish_reason}")
+
                 logger.info(f"LLM query successful on attempt {attempt + 1}. Response length: {len(llmOutput)}")
                 return llmOutput
             except ConfigurationError as e:
@@ -549,13 +563,15 @@ class LLMInterface:
                         reason_enum = getattr(pf, 'block_reason', None)
                         if not reason and reason_enum:
                             reason = getattr(reason_enum, 'name', 'UNKNOWN')
-                        prompt_feedback_details += f" Reason: {reason if reason else 'Not Specified'}."
+                        prompt_feedback_details += f" Reason: {reason if reason else 'Not Specified'} (Rating:"
                         if pf.safety_ratings:
-                            prompt_feedback_details += " SafetyRatings:"
-                            for rating in pf.safety_ratings:
-                                cat_name = getattr(rating.category, 'name', 'UNKNOWN')
-                                prob_name = getattr(rating.probability, 'name', 'UNKNOWN')
-                                prompt_feedback_details += f" {cat_name}={prob_name}"
+                            ratings_str = ", ".join([
+                                f"{getattr(r.category, 'name', 'UNK')}="
+                                f"{getattr(r.probability, 'name', 'UNK')}"
+                                for r in pf.safety_ratings])
+                            prompt_feedback_details += f" {ratings_str})".strip()
+                        else:
+                            prompt_feedback_details += " No ratings)"
                 logger.error(errMsg + prompt_feedback_details)
                 raise LLMError(errMsg + " Adjust safety settings or prompt content.") from e
             except StopCandidateException as e:  # Handle candidate blocks/stops (non-retryable)
