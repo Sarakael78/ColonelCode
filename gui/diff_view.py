@@ -18,6 +18,12 @@ HTML_COLOR_PLACEHOLDER_BG = "#f8f9fa"
 HTML_COLOR_LINE_NUM = "#6c757d"
 HTML_COLOR_TEXT = "#212529"
 
+# --- ADDED LINES ---
+HTML_FONT_FAMILY = "'Courier New', Courier, monospace" # Copied from ui_setup.py
+HTML_FONT_SIZE = "9pt" # Copied from ui_setup.py
+# --- END ADDED LINES ---
+
+
 # Type hint for MainWindow to avoid circular import if necessary
 # if TYPE_CHECKING:
 #    from .main_window import MainWindow
@@ -42,7 +48,8 @@ def handle_current_item_change_for_diff(window: 'MainWindow', current: Optional[
 		current: The newly focused QListWidgetItem (or None).
 		previous: The previously focused QListWidgetItem (or None).
 	"""
-	if window._isBusy:
+	# Check if the window object exists and if it's busy
+	if not hasattr(window, '_isBusy') or window._isBusy:
 		return
 	display_selected_file_diff(window, current)
 
@@ -55,50 +62,66 @@ def display_selected_file_diff(window: 'MainWindow', current_item: Optional[QLis
 		window: The MainWindow instance.
 		current_item: The currently focused QListWidgetItem (or None).
 	"""
-	if window._isBusy: return # Avoid updates during critical operations
+	# Check if the window object exists and if it's busy
+	if not hasattr(window, '_isBusy') or window._isBusy: return # Avoid updates during critical operations
+
+	# Ensure UI elements exist before trying to clear or update them
+	if not hasattr(window, '_originalCodeArea') or not hasattr(window, '_proposedCodeArea'):
+		logger.error("Diff view areas not found on MainWindow.")
+		return
 
 	# Clear previous diff content
 	window._originalCodeArea.clear()
 	window._proposedCodeArea.clear()
 
 	if not current_item:
-		window._updateStatusBar("Select a file to view diff.", 3000)
+		if hasattr(window, '_updateStatusBar'):
+			window._updateStatusBar("Select a file to view diff.", 3000)
 		sync_scrollbars(window) # Ensure scrollbars are reset/synced
 		return
 
 	filePath: str = current_item.text()
 	logger.debug(f"Updating diff view for focused file: {filePath}")
 
+	# Ensure necessary attributes exist on the window object
+	if not hasattr(window, '_originalFileContents') or not hasattr(window, '_clonedRepoPath'):
+		logger.error("Required attributes missing for diff view update.")
+		return
+
 	# --- Ensure Original Content is Available ---
 	# Check cache first
-	original_content: Optional[str] = window._originalFileContents.get(filePath, None)
+	original_content: Optional[str] = window._originalFileContents.get(filePath, "__NOT_CHECKED__") # Use sentinel value
 
-	# If not in cache, try loading it (lazy loading)
-	if original_content is None and window._clonedRepoPath:
-		full_path = os.path.join(window._clonedRepoPath, filePath)
-		if os.path.exists(full_path) and os.path.isfile(full_path):
-			try:
-				file_size = os.path.getsize(full_path)
-				if file_size > MAX_DIFF_FILE_SIZE:
-					logger.warning(f"Original file '{filePath}' too large for diff view ({file_size} bytes). Storing placeholder.")
-					original_content = f"<File too large to display in diff (>{MAX_DIFF_FILE_SIZE // 1024} KB)>"
-				else:
-					with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
-						original_content = f.read()
-					logger.debug(f"Lazily loaded original content for {filePath} into cache.")
-				# Store in cache even if placeholder or loaded
-				window._originalFileContents[filePath] = original_content
-			except Exception as e:
-				logger.error(f"Error reading original file '{filePath}' for diff: {e}", exc_info=True)
-				original_content = f"<Error reading file: {e}>"
-				window._originalFileContents[filePath] = original_content # Cache the error state
+	# If not checked yet, try loading it (lazy loading)
+	if original_content == "__NOT_CHECKED__":
+		if window._clonedRepoPath:
+			full_path = os.path.join(window._clonedRepoPath, filePath)
+			if os.path.exists(full_path) and os.path.isfile(full_path):
+				try:
+					file_size = os.path.getsize(full_path)
+					if file_size > MAX_DIFF_FILE_SIZE:
+						logger.warning(f"Original file '{filePath}' too large for diff view ({file_size} bytes). Storing placeholder.")
+						original_content = f"<File too large to display in diff (>{MAX_DIFF_FILE_SIZE // 1024} KB)>"
+					else:
+						with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+							original_content = f.read()
+						logger.debug(f"Lazily loaded original content for {filePath} into cache.")
+					# Store in cache even if placeholder or loaded
+					window._originalFileContents[filePath] = original_content
+				except Exception as e:
+					logger.error(f"Error reading original file '{filePath}' for diff: {e}", exc_info=True)
+					original_content = f"<Error reading file: {e}>"
+					window._originalFileContents[filePath] = original_content # Cache the error state
+			else:
+				# If the file doesn't exist locally, it might be a new file proposed by LLM
+				# Mark as explicitly non-existent in the cache
+				original_content = None
+				window._originalFileContents[filePath] = None
+				logger.debug(f"Original file '{filePath}' not found locally or is not a file.")
 		else:
-			# If the file doesn't exist locally, it might be a new file proposed by LLM
-			# Mark as explicitly non-existent in the cache
+			# No repo path, cannot load
 			original_content = None
-			window._originalFileContents[filePath] = None
-			logger.debug(f"Original file '{filePath}' not found locally or is not a file.")
-
+			window._originalFileContents[filePath] = None # Mark as not checkable/non-existent
 
 	# --- Determine Proposed Content and Status ---
 	proposed_content: Optional[str] = None
@@ -106,28 +129,40 @@ def display_selected_file_diff(window: 'MainWindow', current_item: Optional[QLis
 	status_msg: str = f"Displaying Diff: {filePath}"
 	validation_info: str = ""
 
+	parsed_data_exists = hasattr(window, '_parsedFileData') and window._parsedFileData is not None
+	validation_errors_exist = hasattr(window, '_validationErrors') and window._validationErrors is not None
+
 	# Get validation status string
-	if window._validationErrors and filePath in window._validationErrors:
+	if validation_errors_exist and filePath in window._validationErrors:
 		count = len(window._validationErrors[filePath])
 		validation_info = f" - <font color='red'><b>Validation Failed ({count} error{'s' if count != 1 else ''})</b></font>"
-	elif window._parsedFileData is not None and filePath in window._parsedFileData and window._validationErrors is not None:
+	elif parsed_data_exists and filePath in window._parsedFileData and validation_errors_exist:
 		# Show OK only if parsed data exists AND validation passed for this file
 		validation_info = " - <font color='green'>Validation OK</font>"
 
 	# Determine proposed content based on state
-	if window._parsedFileData is not None:
+	if parsed_data_exists:
 		if filePath in window._parsedFileData:
 			proposed_content = window._parsedFileData[filePath]
-			if original_content is None: # Original didn't exist or couldn't be read
+			# Check if original_content is None (meaning file didn't exist or couldn't be read)
+			if original_content is None:
 				is_new_file = True
 				original_content = "" # Treat as diff against empty for display
 				status_msg += " - New File"
+			# Check if original content is a placeholder indicating read error/too large
+			elif isinstance(original_content, str) and original_content.startswith("<"):
+				status_msg += " - Original Unreadable vs Proposed" # Can't reliably compare
 			elif original_content == proposed_content:
 				status_msg += " - Original == Proposed (No Changes)"
 			else:
 				status_msg += " - Original vs Proposed"
+		elif original_content is not None and not isinstance(original_content, str) and original_content.startswith("<"):
+            # Original exists but has read error/too large, no proposed changes
+			proposed_content = original_content # Show original placeholder on both sides
+			status_msg += " - Original (Unreadable, No Changes Proposed)"
+			validation_info = ""
 		elif original_content is not None:
-			# File exists, but wasn't in parsed data (no change proposed by LLM)
+			# File exists, readable, but wasn't in parsed data (no change proposed by LLM)
 			proposed_content = original_content # Show original on both sides
 			status_msg += " - Original (No Changes Proposed)"
 			validation_info = "" # No validation status needed if no changes proposed
@@ -137,6 +172,11 @@ def display_selected_file_diff(window: 'MainWindow', current_item: Optional[QLis
 			original_content = proposed_content # Show same placeholder on both sides
 			validation_info = ""
 			status_msg += " - (Error: Content unavailable)"
+	elif original_content is not None and not isinstance(original_content, str) and original_content.startswith("<"):
+		# No parsed data YET, show original placeholder vs proposed placeholder
+		proposed_content = "<No proposed changes yet. Send to LLM and Parse response.>"
+		status_msg += " - Original (Unreadable, Awaiting LLM Response & Parse)"
+		validation_info = ""
 	elif original_content is not None:
 		# No parsed data YET, show original vs placeholder
 		proposed_content = "<No proposed changes yet. Send to LLM and Parse response.>"
@@ -191,8 +231,8 @@ def display_selected_file_diff(window: 'MainWindow', current_item: Optional[QLis
 		orig_sb.blockSignals(orig_sb_blocked)
 		prop_sb.blockSignals(prop_sb_blocked)
 
-
-	window._updateStatusBar(status_msg + validation_info, 10000) # Show status longer
+	if hasattr(window, '_updateStatusBar'):
+		window._updateStatusBar(status_msg + validation_info, 10000) # Show status longer
 	sync_scrollbars(window) # Sync scrollbars after content is set
 
 
@@ -209,6 +249,7 @@ def _generate_diff_html(original_lines: List[str], proposed_lines: List[str], is
 		A tuple containing two strings: (original_html, proposed_html).
 	"""
 	# Define base HTML structure and CSS styles (using constants defined above)
+	# Ensure constants are accessible here (they should be defined at module level)
 	html_style = (f"<style>body{{margin:0;padding:0;font-family:{HTML_FONT_FAMILY};font-size:{HTML_FONT_SIZE};color:{HTML_COLOR_TEXT};background-color:#fff;}}"
 				  f".line{{display:flex;white-space:pre;min-height:1.2em;border-bottom:1px solid #eee;}}"
 				  f".line-num{{flex:0 0 40px;text-align:right;padding-right:10px;color:{HTML_COLOR_LINE_NUM};background-color:#f1f1f1;user-select:none;border-right:1px solid #ddd;}}"
@@ -285,14 +326,16 @@ def sync_scroll_proposed_from_original(window: 'MainWindow', value: int) -> None
 	"""Syncs the proposed code area scrollbar when the original one moves."""
 	if not window._is_syncing_scroll:
 		window._is_syncing_scroll = True
-		window._proposedCodeArea.verticalScrollBar().setValue(value)
+		if hasattr(window, '_proposedCodeArea'):
+			window._proposedCodeArea.verticalScrollBar().setValue(value)
 		window._is_syncing_scroll = False
 
 def sync_scroll_original_from_proposed(window: 'MainWindow', value: int) -> None:
 	"""Syncs the original code area scrollbar when the proposed one moves."""
 	if not window._is_syncing_scroll:
 		window._is_syncing_scroll = True
-		window._originalCodeArea.verticalScrollBar().setValue(value)
+		if hasattr(window, '_originalCodeArea'):
+			window._originalCodeArea.verticalScrollBar().setValue(value)
 		window._is_syncing_scroll = False
 
 def sync_scrollbars(window: 'MainWindow') -> None:
@@ -303,8 +346,9 @@ def sync_scrollbars(window: 'MainWindow') -> None:
 	if not window._is_syncing_scroll:
 		window._is_syncing_scroll = True
 		try:
-			orig_val = window._originalCodeArea.verticalScrollBar().value()
-			window._proposedCodeArea.verticalScrollBar().setValue(orig_val)
+			if hasattr(window, '_originalCodeArea') and hasattr(window, '_proposedCodeArea'):
+				orig_val = window._originalCodeArea.verticalScrollBar().value()
+				window._proposedCodeArea.verticalScrollBar().setValue(orig_val)
 		except Exception as e:
 			logger.error(f"Error during manual scrollbar sync: {e}")
 		finally:
