@@ -4,7 +4,7 @@ Module responsible for connecting signals to slots in the MainWindow.
 """
 
 from PySide6.QtWidgets import QMainWindow, QListWidgetItem
-from PySide6.QtCore import Slot, Signal # Import necessary Qt types
+from PySide6.QtCore import Slot, Signal, Qt # Import necessary Qt types
 from typing import Optional, Dict, List, Tuple, Any # Import necessary typing hints
 
 import logging
@@ -48,6 +48,10 @@ def connect_signals(window: 'MainWindow') -> None:
 	# LLM Interaction Signals
 	window._sendToLlmButton.clicked.connect(lambda: event_handlers.handle_send_to_llm(window))
 	window._pasteResponseButton.clicked.connect(lambda: event_handlers.handle_paste_response(window))
+	# --- ADDED CONNECTION ---
+	# Update widget states whenever the LLM response area text changes
+	window._llmResponseArea.textChanged.connect(window._updateWidgetStates)
+	# --- END ADDED CONNECTION ---
 
 	# Action Button Signals
 	window._parseButton.clicked.connect(lambda: event_handlers.handle_parse_and_validate(window))
