@@ -141,8 +141,8 @@ logs/
 cloned_repos/ 
 cd-output/
 tests/
-.vscode/
-
+.vscode
+cd-output
 # Environment variables
 .env
 # --- END: .gitignore ---

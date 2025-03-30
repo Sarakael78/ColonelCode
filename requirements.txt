@@ -17,4 +17,4 @@ PyYAML
 pyflakes
 
 # Parsing .gitignore files
-gitignore_parser
+gitignore-parser
