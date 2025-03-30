@@ -85,8 +85,8 @@ def handle_clone_load_repo(window: 'MainWindow') -> None:
 	window._promptInput.clear()
 
 	# Start clone worker
-	# Pass the progress handler instance from the window
-	window._githubWorker.startClone(repoUrlOrPath, cloneTargetFullPath, None, window._gitProgressHandler)
+	# FIX: Removed the extra window._gitProgressHandler argument
+	window._githubWorker.startClone(repoUrlOrPath, cloneTargetFullPath, None)
 
 
 # --- File List Handlers ---
@@ -117,9 +117,9 @@ def handle_send_to_llm(window: 'MainWindow') -> None:
 	# Check file selection (_selectedFiles is updated by handle_file_selection_change)
 	if not window._selectedFiles:
 		reply = QMessageBox.question(window, "No Files Selected",
-								   "No files are selected to provide context to the LLM. Proceed without file context?",
-								  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-								  QMessageBox.StandardButton.Cancel)
+								"No files are selected to provide context to the LLM. Proceed without file context?",
+								QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+								QMessageBox.StandardButton.Cancel)
 		if reply == QMessageBox.StandardButton.Cancel:
 			return
 		file_context_msg = "without file context"
@@ -237,9 +237,9 @@ def handle_save_changes(window: 'MainWindow') -> None:
 
 	# Confirmation dialog
 	reply = QMessageBox.question(window, 'Confirm Save',
-							   f"This will overwrite {fileCount} file(s) in the local repository:\n'{window._clonedRepoPath}'\n\nProceed with saving?",
-							   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-							   QMessageBox.StandardButton.Cancel)
+							f"This will overwrite {fileCount} file(s) in the local repository:\n'{window._clonedRepoPath}'\n\nProceed with saving?",
+							QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+							QMessageBox.StandardButton.Cancel)
 	if reply == QMessageBox.StandardButton.Cancel:
 		return
 
@@ -297,9 +297,9 @@ def handle_commit_push(window: 'MainWindow') -> None:
 
 	# Confirmation dialog
 	reply = QMessageBox.question(window, 'Confirm Commit & Push',
-							   f"Commit changes and push to remote '{remote}/{branch}'?\n\nCommit Message:\n'{commitMessage}'",
-							   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-							   QMessageBox.StandardButton.Cancel)
+							f"Commit changes and push to remote '{remote}/{branch}'?\n\nCommit Message:\n'{commitMessage}'",
+							QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+							QMessageBox.StandardButton.Cancel)
 	if reply == QMessageBox.StandardButton.Cancel:
 		return
 
@@ -309,4 +309,4 @@ def handle_commit_push(window: 'MainWindow') -> None:
 	window._updateStatusBar("Committing and pushing changes...")
 	window._updateProgress(-1, "Commit/Push...")
 	# Pass the progress handler instance from the window
-	window._githubWorker.startCommitPush(window._clonedRepoPath, commitMessage, remote, branch, window._gitProgressHandler)
+	window._githubWorker.startCommitPush(window._clonedRepoPath, commitMessage, remote, branch)

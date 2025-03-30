@@ -257,16 +257,17 @@ class MainWindow(QMainWindow):
 
 
     # --- GUI Log Appender ---
+    # FIX: Use append() instead of appendPlainText()
     @Slot(str)
     def _appendLogMessage(self: 'MainWindow', message: str) -> None:
         """Appends a formatted log message to the GUI log area."""
         if hasattr(self, '_appLogArea') and self._appLogArea:
-            # Append plain text; assumes logger already formatted it
-            self._appLogArea.appendPlainText(message)
-            # Auto-scroll to bottom
-            sb = self._appLogArea.verticalScrollBar()
-            if sb:
-                sb.setValue(sb.maximum())
+            # Use append() which adds the text to the end
+            self._appLogArea.append(message)
+            # Auto-scroll to bottom - this is handled automatically by append()
+            # sb = self._appLogArea.verticalScrollBar()
+            # if sb:
+            # 	sb.setValue(sb.maximum())
         # Do not log here, as this is called *by* the logger
 
 
