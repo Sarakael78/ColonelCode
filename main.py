@@ -8,6 +8,7 @@ import sys
 import logging
 import os # For path manipulation if needed
 from PySide6.QtWidgets import QApplication, QMessageBox # Import QMessageBox for error display
+from PySide6.QtGui import QIcon # Import QIcon for setting application icon
 from core.config_manager import ConfigManager
 from core.exceptions import ConfigurationError
 from gui.main_window import MainWindow # Assuming MainWindow is implemented here
@@ -78,10 +79,10 @@ def main() -> None:
 	if not app:
 			app = QApplication(sys.argv)
 
-	# TODO: Add application icon loading/setting here
-	# app.setWindowIcon(QIcon(os.path.join('resources', 'app_icon.png')))
 
-	# Pass the config manager to the main window
+	app.setWindowIcon(QIcon(os.path.join('resources', 'app_icon.png')))
+
+	# Pass t	# TODO: Add application icon loading/setting herehe config manager to the main window
 	try:
 		mainWindow: MainWindow = MainWindow(configManager) # MainWindow needs implementing
 		# # TODO: Set window title, initial size etc.
