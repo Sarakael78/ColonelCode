@@ -2,11 +2,14 @@
 
 # USER ADDITIONS
 .gitignore
-CODEBASE/
 .codebaseignore
 
 # Specific project outputs
 cloned_repos/ 
+cd-output/
+tests/
+.vscode
+cd-output
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -146,12 +149,6 @@ secrets.yaml
 *.log
 logs/
 
-# Specific project outputs
-cloned_repos/ 
-cd-output/
-tests/
-.vscode
-cd-output
 # Environment variables
 .env
 # --- END: .gitignore ---
