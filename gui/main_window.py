@@ -8,7 +8,8 @@ Handles GUI setup, state management, signal connections, logging,
 and orchestrates interactions between UI, workers, and core logic.
 Includes state and handling for line-by-line change acceptance,
 focus highlighting, and keyboard navigation/acceptance using an event filter
-and cursor positioning. Allows saving accepted changes even if validation failed.
+and cursor positioning. Allows saving all parsed changes or individually
+accepted changes regardless of validation status.
 """
 
 # Standard library imports
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow):
 	with background worker threads for Git, LLM, and file operations.
 	Implements an event filter on the proposed code view to handle
 	custom keyboard navigation and acceptance actions for diff chunks.
+	Allows saving all parsed files or individually accepted files regardless of validation status.
 	"""
 
 	# Signal emitted to send log messages to the GUI's log area
@@ -55,7 +57,7 @@ class MainWindow(QMainWindow):
 
 	def __init__(self: 'MainWindow', configManager: ConfigManager, parent: Optional[QWidget] = None) -> None:
 		"""
-		Initialise the main window.
+		Initialise the main window and install event filter.
 
 		Args:
 			configManager (ConfigManager): Instance for managing application configuration.
@@ -195,15 +197,15 @@ class MainWindow(QMainWindow):
 
 	def _updateWidgetStates(self: 'MainWindow') -> None:
 		"""
-		Enables or disables UI widgets based on the current application state.
-		Allows 'Save Accepted' button even if validation failed for the current file.
-		Includes detailed logging of the conditions checked.
+		Enables or disables UI widgets based on state.
+		Allows 'Save All' once parsed, and 'Save Accepted' if changes are accepted,
+		regardless of validation status. Includes detailed logging.
 		"""
 		# --- Determine State Flags ---
 		repoLoaded: bool = bool(self._clonedRepoPath and os.path.isdir(self._clonedRepoPath))
 		responseAvailable: bool = bool(hasattr(self, '_llmResponseArea') and self._llmResponseArea.toPlainText().strip())
 		parsedDataAvailable: bool = self._parsedFileData is not None
-		parsedDataHasContent: bool = parsedDataAvailable and bool(self._parsedFileData) # Check if dict is not empty
+		parsedDataHasContent: bool = parsedDataAvailable and bool(self._parsedFileData) # Check if dict has content
 		currentFileName: Optional[str] = self._fileListWidget.currentItem().text() if self._fileListWidget.currentItem() else None
 
 		# Check if *any* changes have been accepted for the current file
@@ -216,16 +218,17 @@ class MainWindow(QMainWindow):
 			)
 
 		# --- Button Enable Conditions ---
-		# "Save All Validated Changes": Requires repo, parsed data with content, and *no overall validation errors*
-		canSaveAll: bool = repoLoaded and parsedDataHasContent and (self._validationErrors is None)
+		# "Save All Changes": Requires repo loaded and parsed data with content.
+		# *** Validation status is intentionally ignored here. ***
+		canSaveAll: bool = repoLoaded and parsedDataHasContent
 
 		# "Save Accepted (Current File)": Requires repo loaded and accepted changes for the current file.
-		# *** Validation status for the current file is intentionally ignored here. ***
+		# *** Validation status is intentionally ignored here. ***
 		canSaveAccepted: bool = repoLoaded and hasAcceptedChangesForCurrentFile
 
 		# Other state flags
-		repoIsActuallyDirty: bool = repoLoaded and self._repoIsDirty # Based on git status check
-		enabledIfNotBusy: bool = not self._isBusy # General flag for enabling UI during operations
+		repoIsActuallyDirty: bool = repoLoaded and self._repoIsDirty # Based on git status
+		enabledIfNotBusy: bool = not self._isBusy # General flag
 
 		# --- Logging For Debugging Button States ---
 		logger.debug("--- _updateWidgetStates ---")
@@ -233,12 +236,14 @@ class MainWindow(QMainWindow):
 		logger.debug(f"  currentFileName: {currentFileName}")
 		logger.debug(f"  parsedDataAvailable: {parsedDataAvailable}")
 		logger.debug(f"  parsedDataHasContent: {parsedDataHasContent}")
-		# Log validation status for information, even though not used for canSaveAccepted
+		# Log validation status for information only
 		currentFileHadValidationError: bool = bool(self._validationErrors and currentFileName and currentFileName in self._validationErrors)
+		overallValidationErrorsExist: bool = bool(self._validationErrors)
+		logger.debug(f"  overallValidationErrorsExist: {overallValidationErrorsExist}")
 		logger.debug(f"  currentFileHadValidationError: {currentFileHadValidationError}")
 		logger.debug(f"  hasAcceptedChangesForCurrentFile: {hasAcceptedChangesForCurrentFile}")
 		logger.debug(f"  --> canSaveAccepted (Button Enable): {canSaveAccepted} (Requires: repoLoaded AND hasAcceptedChangesForCurrentFile)")
-		logger.debug(f"  --> canSaveAll (Button Enable): {canSaveAll} (Requires: repoLoaded AND parsedDataHasContent AND NO overall validation errors)")
+		logger.debug(f"  --> canSaveAll (Button Enable): {canSaveAll} (Requires: repoLoaded AND parsedDataHasContent)") # Updated condition description
 		logger.debug(f"  enabledIfNotBusy: {enabledIfNotBusy}")
 		logger.debug("--------------------------")
 
@@ -254,8 +259,8 @@ class MainWindow(QMainWindow):
 		if hasattr(self, '_parseButton'): self._parseButton.setEnabled(enabledIfNotBusy and responseAvailable)
 		# Apply the calculated conditions to the save buttons
 		if hasattr(self, '_saveAcceptedButton'): self._saveAcceptedButton.setEnabled(enabledIfNotBusy and canSaveAccepted)
-		if hasattr(self, '_saveFilesButton'): self._saveFilesButton.setEnabled(enabledIfNotBusy and canSaveAll)
-		# Commit button requires repo loaded and actual uncommitted changes
+		if hasattr(self, '_saveFilesButton'): self._saveFilesButton.setEnabled(enabledIfNotBusy and canSaveAll) # Uses updated canSaveAll
+		# Commit button logic remains unchanged
 		if hasattr(self, '_commitPushButton'): self._commitPushButton.setEnabled(enabledIfNotBusy and repoLoaded and repoIsActuallyDirty)
 		# Make LLM response area read-only while busy to prevent edits
 		if hasattr(self, '_llmResponseArea'): self._llmResponseArea.setReadOnly(self._isBusy)
@@ -401,7 +406,9 @@ class MainWindow(QMainWindow):
 		# If the state was changed, update the dictionary
 		if state_changed:
 			self._acceptedChangesState[current_file_path][chunk_id] = new_state
+			# --- Logging acceptance state update ---
 			logger.info(f"Chunk '{chunk_id}' state set to {new_state} for '{current_file_path}'. Acceptance State: {self._acceptedChangesState[current_file_path].get(chunk_id)}")
+			# --- End Logging ---
 			# Refresh the diff view to show updated styles (accepted color) and focus highlight.
 			# Crucially, preserve scroll position after a click action.
 			logger.debug("Refreshing diff view (preserving scroll position).")
@@ -529,7 +536,7 @@ class MainWindow(QMainWindow):
 		# Check if the event is a KeyPress on the target widget (_proposedCodeArea)
 		if watched is self._proposedCodeArea and event.type() == QEvent.Type.KeyPress:
 			# Cast the generic QEvent to QKeyEvent to access key details
-			keyEvent: QKeyEvent = QKeyEvent(event)
+			keyEvent: QKeyEvent = QKeyEvent(event) # Cast to QKeyEvent
 			key: int = keyEvent.key()
 			modifiers: Qt.KeyboardModifier = keyEvent.modifiers()
 
@@ -582,6 +589,7 @@ class MainWindow(QMainWindow):
 						try:
 							current_index = self._current_chunk_id_list.index(self._last_clicked_chunk_id)
 						except ValueError:
+							# Should not happen if ID is in the list, but handle defensively
 							logger.warning(f"Chunk ID '{self._last_clicked_chunk_id}' was in state but not found in list?")
 							current_index = -1 # Treat as if nothing is selected
 
@@ -629,12 +637,12 @@ class MainWindow(QMainWindow):
 
 								if target_block_num >= 0:
 									# Get the document and find the block by its number
-									doc: Any = self._proposedCodeArea.document() # Use Any to satisfy type checker temporarily
-									if doc is None: # Add check if document is None
-										logger.warning("[ScrollLambda] Document not available.")
+									doc: Any = self._proposedCodeArea.document() # Use Any temporarily if type checker complains
+									if doc is None:
+										logger.warning("[ScrollLambda] Document object is None, cannot proceed.")
 										return
 
-									target_block: Any = doc.findBlockByNumber(target_block_num) # Use Any to satisfy type checker temporarily
+									target_block: Any = doc.findBlockByNumber(target_block_num) # Use Any temporarily
 
 									if target_block.isValid():
 										# Create a cursor at the beginning of the target block
