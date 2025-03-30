@@ -11,7 +11,7 @@ Includes functionality to save configuration changes back to the .ini file.
 import os
 import configparser
 from dotenv import load_dotenv
-from typing import Optional, Any, List # Import List
+from typing import Optional, Any, List, Dict # Import Dict
 import logging
 
 # Relative import within the same package - ensure project structure allows this
@@ -59,7 +59,7 @@ class ConfigManager:
 
 		Args:
 			override (bool): Whether to override existing system environment variables
-							 with values from the .env file. Defaults to False.
+							with values from the .env file. Defaults to False.
 
 		Returns:
 			bool: True if the .env file was found and loaded successfully, False otherwise.
@@ -125,6 +125,22 @@ class ConfigManager:
 			logger.error(f"Failed to read configuration file '{self._configFilePath}': {e}", exc_info=True)
 			self._configLoadError = e
 			raise ConfigurationError(f"Error reading config file '{self._configFilePath}': {e}") from e
+
+	# --- NEW: Method to explicitly reload config --- 
+	def reloadConfig(self: 'ConfigManager') -> None:
+		"""
+		Explicitly reloads the configuration from the .ini file.
+		Discards any in-memory changes that haven't been saved.
+
+		Raises:
+			ConfigurationError: If the config file cannot be loaded.
+		"""
+		logger.info(f"Reloading configuration from {self._configFilePath}...")
+		# Re-initialize the parser to discard previous state
+		self._config = configparser.ConfigParser(interpolation=None)
+		# Call the existing loadConfig method
+		self.loadConfig()
+	# --- END NEW METHOD --- 
 
 	def getEnvVar(self: 'ConfigManager', varName: str, defaultValue: Optional[str] = None, required: bool = False) -> Optional[str]:
 		"""
@@ -228,6 +244,21 @@ class ConfigManager:
 		raise ConfigurationError(errMsg)
 
 	def getConfigValueFloat(self: 'ConfigManager', section: str, key: str, fallback: Optional[float] = None, required: bool = False) -> Optional[float]:
+		"""
+		Retrieves a float configuration value from the specified section and key.
+		
+		Args:
+			section (str): The section name to retrieve the value from.
+			key (str): The key name to retrieve the value from.
+			fallback (Optional[float], optional): The fallback value to return if the key is not found. Defaults to None.
+			required (bool, optional): Whether the key must exist or an error should be raised. Defaults to False.
+		
+		Returns:
+			Optional[float]: The value as a float, or the fallback value if specified and the key is not found.
+		
+		Raises:
+			ConfigurationError: If the key is not found and required is True.
+		"""
 		valueStr = self.getConfigValue(section, key, fallback=None, required=required)
 		if valueStr is None: return fallback
 		try:
@@ -237,10 +268,47 @@ class ConfigManager:
 			logger.error(errMsg)
 			raise ConfigurationError(errMsg) from e
 
-	# --- NEW: Method to save config changes ---
+	# --- NEW: Method to get all config values --- 
+	def getAllConfigValues(self: 'ConfigManager') -> Dict[str, Dict[str, str]]:
+		"""
+		Retrieves all configuration sections and their key-value pairs.
+
+		Returns:
+			Dict[str, Dict[str, str]]: A dictionary where keys are section names
+									and values are dictionaries of key-value pairs within that section.
+		"""
+		all_configs: Dict[str, Dict[str, str]] = {}
+		if not self._configLoaded and self._configLoadError:
+			logger.warning(f"Cannot get all config values; configuration file '{self._configFilePath}' failed to load. Error: {self._configLoadError}")
+			return all_configs # Return empty dict if config failed to load
+		if not self._configLoaded and not self._configLoadAttempted:
+			logger.info("Attempting to get all config values, but config was never loaded (likely didn't exist). Returning empty.")
+			return all_configs
+
+		try:
+			for section in self._config.sections():
+				all_configs[section] = {}
+				for key, value in self._config.items(section, raw=True):
+					# Manually strip comments again if needed
+					if value is not None and isinstance(value, str):
+						if '#' in value: value = value.split('#', 1)[0].strip()
+						if ';' in value: value = value.split(';', 1)[0].strip()
+					all_configs[section][key] = value
+			logger.debug(f"Retrieved all configuration values ({len(all_configs)} sections).")
+			return all_configs
+		except configparser.Error as e:
+			logger.error(f"Error retrieving all config values: {e}", exc_info=True)
+			raise ConfigurationError(f"Error accessing config data: {e}") from e
+		except Exception as e:
+			logger.error(f"Unexpected error retrieving all config values: {e}", exc_info=True)
+			raise ConfigurationError(f"Unexpected error accessing config data: {e}") from e
+	# --- END NEW METHOD --- 
+
+	# --- MODIFIED: Method to set config value in memory --- 
 	def setConfigValue(self: 'ConfigManager', section: str, key: str, value: str) -> None:
 		"""
-		Sets a configuration value in memory and attempts to save it back to the .ini file.
+		Sets a configuration value **in memory**. Does NOT automatically save to file.
+		Use saveConfig() to persist changes.
 
 		Args:
 			section (str): The section name in the .ini file.
@@ -248,38 +316,83 @@ class ConfigManager:
 			value (str): The string value to set.
 
 		Raises:
-			ConfigurationError: If the configuration file path is not set, if the config
-								was not loaded successfully, or if there's an error writing
-								the file.
+			ConfigurationError: If there's an error updating the in-memory config object.
+		"""
+		# Check if config was loaded, even if file didn't exist initially
+		if not self._configLoadAttempted and not self._configLoaded:
+			logger.info(f"Config file '{self._configFilePath}' was not loaded. Initializing parser for setting values.")
+			self._config = configparser.ConfigParser(interpolation=None)
+			# We can consider the 'in-memory' config as 'loaded' conceptually now
+			self._configLoaded = True 
+			self._configLoadAttempted = True
+			self._configLoadError = None
+		elif self._configLoadError:
+			errMsg = f"Cannot set configuration value: The configuration file '{self._configFilePath}' failed to load initially. Error: {self._configLoadError}"
+			logger.error(errMsg)
+			raise ConfigurationError(errMsg) from self._configLoadError
+
+		try:
+			# Ensure the section exists in the config object
+			if not self._config.has_section(section):
+				logger.debug(f"Adding new section '{section}' to in-memory configuration.")
+				self._config.add_section(section)
+
+			# Set the value in the config object
+			logger.debug(f"Setting in-memory config value: [{section}] {key} = {value}")
+			self._config.set(section, key, value)
+			# Mark config as loaded if it wasn't before (e.g., setting value on empty config)
+			self._configLoaded = True 
+
+		except configparser.Error as e: # Errors during section creation or setting
+			errMsg = f"Error updating configuration in memory: {e}"
+			logger.error(errMsg, exc_info=True)
+			raise ConfigurationError(errMsg) from e
+		except Exception as e: # Catch any other unexpected errors
+			errMsg = f"An unexpected error occurred while setting configuration value in memory: {e}"
+			logger.error(errMsg, exc_info=True)
+			raise ConfigurationError(errMsg) from e
+	# --- END MODIFIED METHOD --- 
+
+	# --- NEW: Method to save the current config state to file --- 
+	def saveConfig(self: 'ConfigManager') -> None:
+		"""
+		Saves the current in-memory configuration state back to the .ini file.
+
+		Raises:
+			ConfigurationError: If the configuration file path is not set, or if 
+								there's an error writing the file.
 		"""
 		if not self._configFilePath:
 			errMsg = "Cannot save configuration: No configuration file path was specified during initialisation."
 			logger.error(errMsg)
 			raise ConfigurationError(errMsg)
 
+		# Allow saving even if the initial load failed (e.g., creating a new file)
+		# but log a warning if there was a previous load error.
 		if not self._configLoaded and self._configLoadError:
-			errMsg = f"Cannot save configuration: The configuration file '{self._configFilePath}' failed to load initially. Error: {self._configLoadError}"
-			logger.error(errMsg)
-			raise ConfigurationError(errMsg) from self._configLoadError
-		elif not self._configLoaded and not self._configLoadAttempted:
-			# If config wasn't loaded because it didn't exist, allow creating/saving.
-			logger.info(f"Config file '{self._configFilePath}' was not loaded (likely didn't exist). Will attempt to create/save.")
-			# Ensure the parser is initialised
-			if not self._config: self._config = configparser.ConfigParser(interpolation=None)
-
+			logger.warning(f"Saving configuration, but note that the initial load from '{self._configFilePath}' failed. Overwriting or creating file. Initial error: {self._configLoadError}")
+			# Reset error state as we are now attempting to save a potentially new state
+			self._configLoadError = None
+			self._configLoaded = True # Mark as loaded since we are saving a valid state now
+			self._configLoadAttempted = True
+		
+		if not self._config: # Should not happen if setConfigValue was called, but check defensively
+			logger.warning("Attempting to save config, but config object is not initialized. Nothing to save.")
+			return
 
 		try:
-			# Ensure the section exists in the config object
-			if not self._config.has_section(section):
-				logger.debug(f"Adding new section '{section}' to configuration.")
-				self._config.add_section(section)
-
-			# Set the value in the config object
-			logger.debug(f"Setting config value in memory: [{section}] {key} = {value}")
-			self._config.set(section, key, value)
-
-			# Write the entire configuration back to the file
-			logger.info(f"Saving configuration changes to: {self._configFilePath}")
+			logger.info(f"Saving configuration state to: {self._configFilePath}")
+			# Ensure directory exists before writing
+			config_dir = os.path.dirname(self._configFilePath)
+			if config_dir and not os.path.exists(config_dir):
+				try:
+					os.makedirs(config_dir)
+					logger.info(f"Created directory for config file: {config_dir}")
+				except OSError as e_dir:
+					errMsg = f"Failed to create directory '{config_dir}' for config file '{self._configFilePath}': {e_dir}"
+					logger.error(errMsg, exc_info=True)
+					raise ConfigurationError(errMsg) from e_dir
+			
 			with open(self._configFilePath, 'w', encoding='utf-8') as configfile:
 				self._config.write(configfile)
 			logger.debug(f"Successfully saved configuration to {self._configFilePath}")
@@ -288,7 +401,7 @@ class ConfigManager:
 			self._configLoadError = None # Clear any previous load error
 
 		except configparser.Error as e: # Errors during section creation or setting
-			errMsg = f"Error updating configuration in memory for [{section}] {key}: {e}"
+			errMsg = f"Error updating configuration in memory: {e}"
 			logger.error(errMsg, exc_info=True)
 			raise ConfigurationError(errMsg) from e
 		except IOError as e: # Errors during file writing
@@ -299,7 +412,7 @@ class ConfigManager:
 			errMsg = f"An unexpected error occurred while saving configuration: {e}"
 			logger.error(errMsg, exc_info=True)
 			raise ConfigurationError(errMsg) from e
-	# --- END NEW METHOD ---
+	# --- END NEW METHOD --- 
 
 	# --- Properties (Unchanged) ---
 	@property

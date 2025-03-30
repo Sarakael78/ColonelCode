@@ -1,3 +1,5 @@
+# Updated Codebase/gui/ui_setup.py
+# --- START: gui/ui_setup.py ---
 # gui/ui_setup.py
 """
 Module responsible for creating and laying out the UI widgets
@@ -9,7 +11,7 @@ from PySide6.QtWidgets import (
 	QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 	QLabel, QLineEdit, QPushButton, QTextEdit,
 	QListWidget, QProgressBar, QStatusBar,
-	QSplitter, QTabWidget
+	QSplitter, QTabWidget, QTextBrowser  # Add QTextBrowser import
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIcon
@@ -100,11 +102,16 @@ def setup_ui(window: QMainWindow) -> None:
 	actionLayout = QHBoxLayout()
 	window._parseButton = QPushButton("Parse & Validate")
 	window._parseButton.setToolTip("Parse the LLM response (from the tab below), extract code changes, and validate syntax.")
-	window._saveFilesButton = QPushButton("Save Changes Locally")
-	window._saveFilesButton.setToolTip("Save the validated, proposed changes to the local files in the repository.")
+	# --- ADDED BUTTON ---
+	window._saveAcceptedButton = QPushButton("Save Accepted (Current File)")
+	window._saveAcceptedButton.setToolTip("Save only the changes you have manually accepted in the diff view for the currently focused file.")
+	# --- END ADDED BUTTON ---
+	window._saveFilesButton = QPushButton("Save All Validated Changes") # Renamed slightly for clarity
+	window._saveFilesButton.setToolTip("Save ALL validated, proposed changes (for ALL files modified by the LLM) to the local repository.") # Updated tooltip
 	window._commitPushButton = QPushButton("Commit & Push")
 	window._commitPushButton.setToolTip("Commit the currently STAGED changes in the local repository and push them to the default remote/branch (Does NOT stage automatically).")
 	actionLayout.addWidget(window._parseButton)
+	actionLayout.addWidget(window._saveAcceptedButton) # Add the new button
 	actionLayout.addWidget(window._saveFilesButton)
 	actionLayout.addWidget(window._commitPushButton)
 	actionLayout.addStretch(1)
@@ -132,22 +139,31 @@ def setup_ui(window: QMainWindow) -> None:
 	window._originalCodeArea.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
 	window._originalCodeArea.setFont(codeFont)
 	window._originalCodeArea.setToolTip("Shows the original content of the file currently focused in the list above.")
+	window._originalCodeArea.setObjectName("originalCodeArea") # Add object name
+	originalLayout.addWidget(window._originalCodeArea)
 	originalContainer = QWidget()
 	originalContainer.setLayout(originalLayout)
-	originalContainer.setObjectName("originalCodeContainer") # Add object name
+	originalContainer.setObjectName("originalCodeContainer")
 	diffSplitter.addWidget(originalContainer)
 
 	proposedLayout = QVBoxLayout()
-	proposedLayout.addWidget(QLabel("Proposed Code (Focused File):"))
-	window._proposedCodeArea = QTextEdit()
-	window._proposedCodeArea.setReadOnly(True)
+	proposedLayout.addWidget(QLabel("Proposed Code (Accept Changes Below):")) # Update label
+	window._proposedCodeArea = QTextBrowser()  # Change to QTextBrowser
+	window._proposedCodeArea.setReadOnly(True) # Keep read-only, interaction via HTML content
 	window._proposedCodeArea.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
 	window._proposedCodeArea.setFont(codeFont)
-	window._proposedCodeArea.setToolTip("Shows the proposed changes (after parsing) or indicates status.")
+	window._proposedCodeArea.setToolTip("Shows the proposed changes. Use controls within this view to accept/reject individual changes before saving.")
+	window._proposedCodeArea.setObjectName("proposedCodeArea") # Add object name
+	# --- Add link anchor handling ---
+	window._proposedCodeArea.setOpenLinks(False) # Prevent default link opening
+	window._proposedCodeArea.anchorClicked.connect(window._handle_diff_anchor_click) # Connect to handler in MainWindow
+	# --- End link anchor handling ---
+	proposedLayout.addWidget(window._proposedCodeArea)
 	proposedContainer = QWidget()
 	proposedContainer.setLayout(proposedLayout)
-	proposedContainer.setObjectName("proposedCodeContainer") # Add object name
+	proposedContainer.setObjectName("proposedCodeContainer")
 	diffSplitter.addWidget(proposedContainer)
+
 
 	diffSplitter.setSizes([400, 400])
 	diffLayout.addWidget(diffSplitter)
@@ -190,3 +206,5 @@ def setup_ui(window: QMainWindow) -> None:
 
 	window.setGeometry(100, 100, 1100, 850) # Set default geometry
 	logger.debug("UI setup complete.")
+
+# --- END: gui/ui_setup.py ---
