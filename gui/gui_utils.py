@@ -9,7 +9,7 @@ Includes the custom logging handler for directing logs to the GUI.
 import logging
 import sys # Import sys for stderr fallback
 from typing import Callable, Optional
-from PySide6.QtCore import QObject, Signal # Removed Slot as it's not used here
+from PySide6.QtCore import QObject # Removed Slot as it's not used here
 
 class QtLogHandler(logging.Handler, QObject):
 	"""

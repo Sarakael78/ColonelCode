@@ -18,7 +18,7 @@ import os
 import logging
 import difflib
 import html
-from typing import Optional, Dict, Union, List, Tuple
+from typing import Optional, Dict, List, Tuple
 
 # Qt imports
 from PySide6.QtWidgets import (
@@ -28,21 +28,17 @@ from PySide6.QtWidgets import (
     QMessageBox, QSplitter, QFileDialog,
     QInputDialog, QTabWidget, QListWidgetItem
 )
-from PySide6.QtCore import Qt, Slot, Signal, QObject
-from PySide6.QtGui import QIcon, QTextOption, QFont, QColor
+from PySide6.QtCore import Qt, Slot, Signal
+from PySide6.QtGui import QIcon, QFont
 
 # Local imports
 from core.config_manager import ConfigManager
 from core.exceptions import (
-    ConfigurationError,
-    ParsingError,
-    BaseApplicationError,
-    GitHubError
+    ConfigurationError
 )
 from core.github_handler import GitHubHandler
 from core.llm_interface import LLMInterface
 from gui.threads import GitHubWorker, LLMWorker, FileWorker
-from utils.logger_setup import setupLogging
 from gui.gui_utils import QtLogHandler
 
 # Initialize logging
@@ -314,8 +310,8 @@ class MainWindow(QMainWindow):
     def _setupGuiLogging(self: 'MainWindow') -> None:
         try:
             guiHandler = QtLogHandler(signal_emitter=self.signalLogMessage.emit, parent=self)
-            guiLogLevelName = self._configManager.getConfigValue('Logging', 'GuiLogLevel', fallback='INFO') # Default to INFO
-            guiLogLevel = getattr(logging, guiLogLevelName.upper(), logging.INFO)
+            guiLogLevelName = self._configManager.getConfigValue('Logging', 'GuiLogLevel', fallback='DEBUG') 
+            guiLogLevel = getattr(logging, guiLogLevelName.upper(), logging.DEBUG)
             guiHandler.setLevel(guiLogLevel)
             logFormat = self._configManager.getConfigValue('Logging', 'GuiLogFormat', fallback='%(asctime)s - %(levelname)s - %(message)s')
             dateFormat = self._configManager.getConfigValue('Logging', 'GuiLogDateFormat', fallback='%H:%M:%S')
@@ -411,8 +407,8 @@ class MainWindow(QMainWindow):
     def _displaySelectedFileDiff(self: 'MainWindow', current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]) -> None:
         """Displays the diff for the currently focused file item."""
         _ = previous; # Not used
-        if self._isBusy: return;
-        self._originalCodeArea.clear(); self._proposedCodeArea.clear();
+        if self._isBusy: return
+        self._originalCodeArea.clear(); self._proposedCodeArea.clear()
 
         if not current:
             self._updateStatusBar("Select a file to view diff.", 3000)

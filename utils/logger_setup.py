@@ -9,7 +9,7 @@ import logging
 import sys
 import os
 from logging.handlers import RotatingFileHandler
-from typing import List, Optional # Import List, Optional
+from typing import List 
 
 # Define standard formats - can be customised via config or arguments
 DEFAULT_LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
@@ -17,11 +17,11 @@ DEFAULT_DATE_FORMAT: str = '%Y-%m-%d %H:%M:%S'
 
 
 def setupLogging(
-	logLevel: int = logging.INFO,
+	logLevel: int = logging.DEBUG,
 	logToConsole: bool = True,
 	logToFile: bool = True, # Defaulting to True, often useful
 	logFileName: str = 'app.log',
-	logFileLevel: int = logging.INFO,
+	logFileLevel: int = logging.DEBUG,
 	logDir: str = 'logs', # Default log directory
 	maxBytes: int = 10*1024*1024, # 10 MB
 	backupCount: int = 5,
@@ -35,7 +35,7 @@ def setupLogging(
 	Removes existing handlers before adding new ones to prevent duplication.
 
 	Args:
-		logLevel (int): The minimum logging level for the root logger (default: INFO).
+		logLevel (int): The minimum logging level for the root logger (default: DEBUG).
 		logToConsole (bool): Whether to add a handler to log messages to the console (stderr).
 		logToFile (bool): Whether to add a handler to log messages to a rotating file.
 		logFileName (str): The name of the log file (used if logToFile is True).

@@ -12,7 +12,6 @@ import time  # For retry delay
 import google.generativeai as genai
 from google.generativeai.types import (
     GenerationConfig,
-    ContentDict,
     PartDict,
     GenerateContentResponse,
     BlockedPromptException,
@@ -25,7 +24,7 @@ from google.generativeai.types.safety_types import (
 from google.api_core import exceptions as google_exceptions
 
 # Python standard library imports
-from typing import Dict, Optional, Any, List, Tuple, Union
+from typing import Dict, Optional, List, Tuple, Union
 
 # Local imports
 from .exceptions import LLMError, ConfigurationError
@@ -273,8 +272,8 @@ class LLMInterface:
             modelName = self._configManager.getConfigValue('General', 'DefaultLlmModel', fallback='gemini-1.5-flash-latest')
             if not isinstance(modelName, str) or not modelName.strip():
                 modelName = 'gemini-1.5-flash-latest'
-            max_tokens_per_file_config = self._configManager.getConfigValueInt('LLM', 'MaxTokensPerFileInPrompt', fallback=None)
-            max_chars_per_file_config = self._configManager.getConfigValueInt('LLM', 'MaxCharsPerFileInPrompt', fallback=None)
+            max_tokens_per_file_config = self._configManager.getConfigValueInt('LLM', 'MaxTokensPerFileInPrompt', fallback=262144)
+            max_chars_per_file_config = self._configManager.getConfigValueInt('LLM', 'MaxCharsPerFileInPrompt', fallback=262144)
             max_tokens_per_file = max_tokens_per_file_config if max_tokens_per_file_config is not None and max_tokens_per_file_config > 0 else 0
             max_chars_per_file = max_chars_per_file_config if max_chars_per_file_config is not None and max_chars_per_file_config > 0 else 0
             use_token_truncation = max_tokens_per_file > 0

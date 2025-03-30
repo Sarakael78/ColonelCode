@@ -15,8 +15,7 @@ import git # Import the git library
 import os
 import logging
 from typing import List, Optional, Tuple, Any, Dict # Use Tuple for branch status, Any for progress handler, ADDED Dict
-# FIX: Import QObject, Signal, Slot explicitly
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal
 
 # Relative import from the 'core' package for custom exceptions
 from .exceptions import GitHubError
@@ -655,7 +654,7 @@ class GitHubHandler:
 			logger.error(errMsg, exc_info=True)
 			raise GitHubError(errMsg) from e
 
-	def _check_branch_status(self: 'GitHubHandler', repo: git.Repo, remoteName: str, branchName: str) -> Tuple[bool, str]:
+	def _check_branch_status(self: 'GitHubHandler', repo: git.Repo, remoteName: str, branchName: str, progress_handler: Optional[GitProgressHandler] = None) -> Tuple[bool, str]:
 		"""
 		Internal helper to check if the local branch is behind or diverged from its remote tracking branch.
 		Performs a 'git fetch' first.
@@ -664,6 +663,7 @@ class GitHubHandler:
 			repo (git.Repo): The repository object.
 			remoteName (str): The name of the remote.
 			branchName (str): The name of the local branch.
+			progress_handler (Optional[GitProgressHandler]): Handler for progress updates.
 
 		Returns:
 			Tuple[bool, str]: (is_behind_or_diverged_or_error, message)
@@ -687,8 +687,7 @@ class GitHubHandler:
 			# Fetch latest updates from the remote
 			logger.debug(f"Fetching from remote '{remoteName}'...")
 			try:
-				# TODO: Add progress reporting for fetch if desired/possible
-				remote.fetch(prune=True) # Consider adding progress=progress_handler if passed down
+				remote.fetch(prune=True, progress=progress_handler)
 			except git.GitCommandError as fetch_err:
 				stderrOutput = getattr(fetch_err, 'stderr', 'N/A').strip()
 				if "Authentication failed" in stderrOutput or "Permission denied" in stderrOutput:
@@ -812,7 +811,7 @@ class GitHubHandler:
 				# --- Pre-push Check ---
 				if progress_handler and hasattr(progress_handler, '_emitter'):
 					progress_handler._emitter.progressUpdate.emit(-1, f"Checking status vs {remoteName}...")
-				check_failed_or_behind, status_message = self._check_branch_status(repo, remoteName, branchName)
+				check_failed_or_behind, status_message = self._check_branch_status(repo, remoteName, branchName, progress_handler)
 				if check_failed_or_behind:
 					# If branch is behind, diverged, or status check failed, raise error before push attempt
 					logger.error(f"Pre-push check failed: {status_message}")

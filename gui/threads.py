@@ -13,11 +13,10 @@ Each worker emits signals to update the GUI about progress and completion status
 
 # Standard library imports
 import logging
-import time
 import os
 import io
 import json
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 
 # Qt imports
 from PySide6.QtCore import QThread, Signal, Slot
@@ -50,7 +49,6 @@ from core.github_handler import GitHubHandler, GitProgressHandler
 from core.llm_interface import LLMInterface
 from core.file_processor import FileProcessor
 from core.exceptions import (
-    BaseApplicationError,
     GitHubError,
     ParsingError,
     LLMError,

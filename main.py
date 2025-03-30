@@ -15,35 +15,38 @@ from gui.main_window import MainWindow # Assuming MainWindow is implemented here
 from utils.logger_setup import setupLogging
 
 # --- Constants ---
-# Adhering to user preference for explicit initialisation
 CONFIG_FILE_PATH: str = 'config.ini'
 ENV_FILE_PATH: str = '.env'
 
+def configure_logging(config_manager: ConfigManager) -> logging.Logger:
+    """Configure logging based on loaded configuration settings."""
+    file_log_level_name = config_manager.getConfigValue('Logging', 'FileLogLevel', fallback='DEBUG')
+    log_dir = config_manager.getConfigValue('Logging', 'LogDirectory', fallback='logs')
+    log_filename = config_manager.getConfigValue('Logging', 'LogFileName', fallback='app_log.log')
+    file_log_level = getattr(logging, file_log_level_name.upper(), logging.DEBUG)
+    
+    return setupLogging(
+        logToConsole=True,
+        logToFile=True,
+        logFileLevel=file_log_level,
+        logDir=log_dir,
+        logFileName=log_filename
+    )
+
 def main() -> None:
 	"""Main application entry point."""
-	# Setup logging first (basic console logging initially)
-	# TODO: Enhance setupLogging to potentially get log dir/level from config *after* loading
-	#       Currently uses defaults defined in logger_setup.py
-	logger: logging.Logger = setupLogging(logToConsole=True, logToFile=True) # Enable file logging by default
+	# Initial basic logging setup
+	logger: logging.Logger = setupLogging(logToConsole=True, logToFile=True)
 	logger.info("================ Application Starting ================")
 
 	configManager: ConfigManager = ConfigManager(CONFIG_FILE_PATH, ENV_FILE_PATH)
 	try:
-		# Load sensitive data (API keys) from .env first for security
-		configManager.loadEnv() # .env is optional, won't raise error if missing unless required later
-
-		# Load non-sensitive settings from config.ini
-		configManager.loadConfig() # config.ini is also optional by default
-
-		# Now that config might be loaded, potentially reconfigure logger if needed
-		# Example: Update file log level based on config
-		fileLogLevelName = configManager.getConfigValue('Logging', 'FileLogLevel', fallback='INFO')
-		logDir = configManager.getConfigValue('Logging', 'LogDirectory', fallback='logs')
-		logFileName = configManager.getConfigValue('Logging', 'LogFileName', fallback='app_log.log')
-		fileLogLevel = getattr(logging, fileLogLevelName.upper(), logging.INFO)
-		# Re-setup logger with potentially updated file logging params
-		logger = setupLogging(logToConsole=True, logToFile=True, logFileLevel=fileLogLevel, logDir=logDir, logFileName=logFileName)
-		logger.info("Configuration loaded. Logger potentially reconfigured.")
+		configManager.loadEnv()
+		configManager.loadConfig()
+		
+		# Reconfigure logging with settings from config
+		logger = configure_logging(configManager)
+		logger.info("Configuration loaded. Logger reconfigured with settings from config.")
 
 		# Check for essential configuration/secrets needed immediately
 		# Example: Check for Gemini API Key
@@ -82,11 +85,24 @@ def main() -> None:
 
 	app.setWindowIcon(QIcon(os.path.join('resources', 'app_icon.png')))
 
-	# Pass t	# TODO: Add application icon loading/setting herehe config manager to the main window
 	try:
-		mainWindow: MainWindow = MainWindow(configManager) # MainWindow needs implementing
-		# # TODO: Set window title, initial size etc.
+		mainWindow: MainWindow = MainWindow(configManager)
 		mainWindow.setWindowTitle("LLM Code Updater")
+		
+		# Set window geometry from config or use defaults
+		width = int(configManager.getConfigValue('GUI', 'WindowWidth', fallback='1024'))
+		height = int(configManager.getConfigValue('GUI', 'WindowHeight', fallback='768'))
+		mainWindow.resize(width, height)
+		
+		# Center the window on screen
+		screen = app.primaryScreen().geometry()
+		mainWindow.setGeometry(
+			(screen.width() - width) // 2,
+			(screen.height() - height) // 2,
+			width,
+			height
+		)
+		
 		mainWindow.show()
 	except Exception as e:
 		# Catch errors specifically during MainWindow initialisation

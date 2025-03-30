@@ -150,7 +150,6 @@ class ConfigManager:
 			return defaultValue
 		return value
 
-	# --- CORRECTED getConfigValue ---
 	def getConfigValue(self: 'ConfigManager', section: str, key: str, fallback: Optional[Any] = None, required: bool = False) -> Optional[Any]:
 		"""
 		Retrieves a configuration value from the loaded .ini file, disabling interpolation.
@@ -176,7 +175,6 @@ class ConfigManager:
 
 		if required and not valueExists:
 			errMsg = f"Required configuration value '{key}' not found in section '{section}'."
-			# Add context about file status
 			if self._configFilePath:
 				try:
 					file_exists_check = os.path.isfile(self._configFilePath)
@@ -207,9 +205,8 @@ class ConfigManager:
 		else:
 			logger.debug(f"Raw config value '{section}/{key}' not found, using fallback: {fallback}")
 			return fallback
-	# --- END CORRECTION ---
 
-	# --- Convenience methods (no changes needed here, they use the corrected getConfigValue) ---
+
 	def getConfigValueInt(self: 'ConfigManager', section: str, key: str, fallback: Optional[int] = None, required: bool = False) -> Optional[int]:
 		valueStr = self.getConfigValue(section, key, fallback=None, required=required)
 		if valueStr is None: return fallback
