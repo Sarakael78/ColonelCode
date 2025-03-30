@@ -42,7 +42,7 @@ class GitProgressHandler(git.remote.RemoteProgress):
 	Custom progress handler for GitPython operations (like clone).
 	Inherits from RemoteProgress for GitPython integration and uses composition
 	with a QObject (_SignalEmitter) to emit Qt signals for updating the GUI,
-	avoiding multiple C-extension inheritance conflicts.
+	a voiding multiple C-extension inheritance conflicts.
 	"""
 
 	# Keep a reference to the signal emitter
@@ -191,8 +191,8 @@ class GitHubHandler:
 			localPath (str): The target local directory path where the repository
 							 should be cloned or where it already exists.
 			authToken (Optional[str]): Informational only. If provided for an HTTPS URL,
-									   a warning is logged suggesting use of a credential
-									   manager instead of direct token handling.
+								   a warning is logged suggesting use of a credential
+								   manager instead of direct token handling.
 			progress_handler (Optional[GitProgressHandler]): An instance of GitProgressHandler
 															 to receive progress updates.
 
@@ -447,7 +447,7 @@ class GitHubHandler:
 			stderrOutput: str = getattr(e, 'stderr', "No stderr output.").strip()
 			# Check for specific pull-related errors
 			if "You have unstaged changes" in stderrOutput or "Your local changes would be overwritten by merge" in stderrOutput:
-				errMsg = f"Pull aborted: Repository has uncommitted changes that would be overwritten. Please commit or stash them first." # Simplified message
+				errMsg = f"Pull aborted: Repository has uncommitted changes that would be overwritten. Please commit or stash them first."
 			elif "Authentication failed" in stderrOutput or "Permission denied" in stderrOutput:
 				errMsg = f"Authentication failed during pull from '{remoteName}'. Check credentials/SSH keys."
 			elif "could not resolve host" in stderrOutput.lower():
@@ -756,15 +756,15 @@ class GitHubHandler:
 		progress_handler: Optional[GitProgressHandler] = None # For push progress (if implemented)
 	) -> str:
 		"""
-		Stages all changes, commits them, and optionally pushes to the remote
+		Commits staged changes and optionally pushes to the remote
 		after checking if the local branch is behind its remote counterpart.
 
-		Checks for changes using `isDirty()`. If changes exist, stages all
-		modifications and new files, commits using the provided message. If `push`
-		is True, it first fetches the remote and checks if the local branch (`branchName`)
-		is behind or has diverged from its tracking branch on `remoteName`. If it is
-		behind/diverged, it raises a GitHubError prompting the user to pull.
-		Otherwise, it attempts the push, relying on Git's credential management.
+		Checks for staged changes. If staged changes exist, commits them using the
+		provided message. If `push` is True, it first fetches the remote and checks
+		if the local branch (`branchName`) is behind or has diverged from its tracking
+		branch on `remoteName`. If it is behind/diverged, it raises a GitHubError
+		prompting the user to pull. Otherwise, it attempts the push, relying on Git's
+		credential management.
 
 		Args:
 			repoPath (str): The path to the local Git repository.
@@ -778,35 +778,34 @@ class GitHubHandler:
 			progress_handler (Optional[GitProgressHandler]): Progress handler for push (Limited support in GitPython).
 
 		Returns:
-			str: A success message indicating the outcome (e.g., "No changes detected.",
+			str: A success message indicating the outcome (e.g., "No staged changes detected.",
 				 "Changes committed locally.", "Changes committed and pushed...").
 
 		Raises:
-			GitHubError: If staging, committing, or pushing fails, or if the push
-						 pre-check determines the local branch is behind/diverged.
-						 Provides specific messages for common issues.
+			GitHubError: If committing or pushing fails, or if the push pre-check
+						 determines the local branch is behind/diverged. Provides specific
+						 messages for common issues.
 		"""
 		logger.info(f"Starting update process for repository: {repoPath}")
 		try:
 			repo: git.Repo = git.Repo(repoPath)
 			gitCmd: git.Git = repo.git
 
-			# 1. Check for changes using the dedicated method
-			if not self.isDirty(repoPath):
-				logger.info("No changes detected in the repository. Nothing to commit or push.")
-				return "No changes detected."
+			# 1. Check for STAGED changes specifically
+			staged_diff = repo.index.diff("HEAD") # Diff staged changes against the last commit
+			# Also check against empty tree if there are no commits yet (initial commit)
+			has_staged_changes = bool(staged_diff) or (not repo.head.is_valid() and bool(repo.index.diff(None)))
 
-			# 2. Stage all changes (git add -A)
-			logger.info("Staging all changes (including new/deleted files)...")
-			gitCmd.add(A=True) # Use -A to stage all changes (modified, new, deleted)
-			logger.debug("Changes staged successfully.")
+			if not has_staged_changes:
+				logger.info("No staged changes detected in the repository. Nothing to commit or push.")
+				return "No staged changes detected."
 
-			# 3. Commit changes
-			logger.info(f"Committing changes with message: '{commitMessage}'")
+			# 2. Commit STAGED changes (Staging is removed - must be done manually before clicking button)
+			logger.info(f"Committing staged changes with message: '{commitMessage}'")
 			repo.index.commit(commitMessage)
 			logger.info("Commit successful.")
 
-			# 4. Push changes (optional, with pre-check)
+			# 3. Push changes (optional, with pre-check)
 			if push:
 				# --- Pre-push Check ---
 				if progress_handler and hasattr(progress_handler, '_emitter'):
@@ -923,12 +922,16 @@ class GitHubHandler:
 			# Catch errors during staging/commit phase if not push error
 			stderrOutput = getattr(e, 'stderr', "No stderr output.").strip()
 			if "nothing to commit" in stderrOutput:
-				# Should be caught by isDirty, but handle defensively
-				logger.warning(f"Git command '{e.command}' reported 'nothing to commit'. Status: {e.status}. Stderr: {stderrOutput}")
-				if not self.isDirty(repoPath): # Double check dirty status
-					return "No changes needed committing."
-				else: # Should not happen if isDirty was true
-					errMsg = f"Git reported 'nothing to commit' but repository seems dirty. Staging/Commit failed? Command: {e.command}. Stderr: {stderrOutput}"
+				# This should be caught by the staged changes check, but handle defensively
+				logger.warning(f"Git command '{e.command}' reported 'nothing to commit' after staged check. Status: {e.status}. Stderr: {stderrOutput}")
+				# Double check staged status
+				repo_check = git.Repo(repoPath)
+				staged_diff_check = repo_check.index.diff("HEAD")
+				has_staged_check = bool(staged_diff_check) or (not repo_check.head.is_valid() and bool(repo_check.index.diff(None)))
+				if not has_staged_check:
+					return "No staged changes needed committing."
+				else: # Should not happen
+					errMsg = f"Git reported 'nothing to commit' but repository seems to have staged changes. Commit failed? Command: {e.command}. Stderr: {stderrOutput}"
 			elif "Changes not staged for commit" in stderrOutput:
 				errMsg = f"Commit failed: No changes were staged. Staging might have failed. Stderr: {stderrOutput}"
 			else: # Generic error during add/commit

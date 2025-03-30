@@ -103,7 +103,7 @@ def setup_ui(window: QMainWindow) -> None:
 	window._saveFilesButton = QPushButton("Save Changes Locally")
 	window._saveFilesButton.setToolTip("Save the validated, proposed changes to the local files in the repository.")
 	window._commitPushButton = QPushButton("Commit & Push")
-	window._commitPushButton.setToolTip("Commit the currently staged changes in the local repository and push them to the default remote/branch.")
+	window._commitPushButton.setToolTip("Commit the currently STAGED changes in the local repository and push them to the default remote/branch (Does NOT stage automatically).")
 	actionLayout.addWidget(window._parseButton)
 	actionLayout.addWidget(window._saveFilesButton)
 	actionLayout.addWidget(window._commitPushButton)

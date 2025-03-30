@@ -13,8 +13,8 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog, QLineEdit,
 from core.exceptions import ConfigurationError
 
 # Type hint for MainWindow to avoid circular import if necessary
-# if TYPE_CHECKING:
-#    from .main_window import MainWindow
+if TYPE_CHECKING:
+	from .main_window import MainWindow
 
 # Import other necessary modules or constants
 from . import diff_view # For refreshing diff view
