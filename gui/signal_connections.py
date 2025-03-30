@@ -19,9 +19,9 @@ from . import diff_view
 logger = logging.getLogger(__name__)
 
 # Type hint for MainWindow to resolve forward references if needed
-# from typing import TYPE_CHECKING
-# if TYPE_CHECKING:
-#     from .main_window import MainWindow
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+	from .main_window import MainWindow
 
 def connect_signals(window: 'MainWindow') -> None:
 	"""
