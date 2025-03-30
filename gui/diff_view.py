@@ -9,6 +9,9 @@ import logging
 import os
 from typing import Optional, List, Tuple, TYPE_CHECKING
 
+if TYPE_CHECKING:
+	from .main_window import MainWindow
+
 from PySide6.QtWidgets import QListWidgetItem, QTextEdit
 
 # Constants for UI styling (Copied from main_window.py)

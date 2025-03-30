@@ -9,8 +9,9 @@ import logging
 import os
 from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
 
-from PySide6.QtWidgets import QListWidgetItem, QMessageBox
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QMessageBox
 from PySide6.QtGui import QColor # Import QColor
+from PySide6.QtCore import Qt # Import Qt for MatchFlag
 
 # Import necessary modules
 from core.exceptions import ConfigurationError, LLMError
